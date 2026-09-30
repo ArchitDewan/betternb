@@ -12,9 +12,17 @@ Current Go web application commands:
 - Static analysis: `go vet ./...`.
 - Build: `go build ./cmd/betternb`.
 
-These commands cover the public landing page and temporary web prototype. The production product is the native macOS application defined in `docs/ARCHITECTURE.md`; its scaffold and canonical Xcode commands do not exist yet.
+Current native macOS prototype commands:
 
-There is not yet a separate formatter/linter command, native application command, Python service, database migration command, or deployment command.
+- Run locally: `swift run BetterNB`.
+- Build: `swift build`.
+- Build an inspectable app bundle: `./scripts/build-macos-prototype.sh`.
+- Inspect the minimum window: `BETTERNB_WINDOW=min .build/BetterNB.app/Contents/MacOS/BetterNB`.
+- Zoom type and spacing: `⌘+` / `⌘=` in, `⌘-` out, `⌘0` reset. Default is 110%.
+
+The SwiftUI prototype does not yet have an automated test target. Verify visual-only changes by building and inspecting the running app at its default and minimum window sizes.
+
+There is not yet a separate formatter/linter command, Python service, database migration command, or deployment command.
 
 Use `docs/PRODUCT.md` for product scope, `docs/ARCHITECTURE.md` for system boundaries, and `docs/DEVELOPMENT.md` for the feature-session and worktree workflow. Read only the document relevant to the current task.
 

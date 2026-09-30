@@ -30,8 +30,8 @@ BetterNB should borrow the clarity of this workspace model, not its branding or 
 - Make attempting a problem the primary interaction; do not default to producing complete solutions.
 - Keep course material, mathematical work, feedback, practice, and review in one navigable workspace.
 - Feel native on macOS: fast launch, keyboard navigation, menus, drag and drop, paste, multiple windows, and system accessibility.
-- Work offline for course organization, notes, problem attempts, and previously downloaded material.
-- Persist locally first and synchronize without silently overwriting student work.
+- Keep the interface responsive when connectivity changes and preserve drafts before sending them.
+- Synchronize through an application API without silently overwriting student work.
 - Keep tutoring models, OCR, symbolic verification, and sync providers replaceable behind narrow interfaces.
 - Preserve every attempt and correction so learning progress is explainable.
 - Make asynchronous OCR, ingestion, generation, and sync work observable and retryable.
@@ -77,13 +77,13 @@ Public browser
 BetterNB for macOS
   -> SwiftUI feature views
   -> domain use cases and protocols
-  -> local repositories
-      -> SQLite study database
+  -> local workspace support
+      -> lightweight cache and draft store (implementation deferred)
       -> attachment vault in Application Support
       -> durable sync outbox
   -> service clients
       -> Go account and sync API
-          -> PostgreSQL
+          -> PostgreSQL (canonical application data)
           -> object storage
       -> Python tutoring and verification API
           -> OCR / math parser
@@ -92,7 +92,7 @@ BetterNB for macOS
           -> model gateway
 ```
 
-The first native milestones should run without PostgreSQL or object storage. Local persistence is the source of truth on the device until the sync contract is deliberately introduced.
+The first visual native milestones run without a database. When product data is introduced, the macOS app talks to a versioned service API and PostgreSQL is the canonical durable store. The distributed client never connects to PostgreSQL directly or contains database credentials. A lightweight local cache and draft outbox can be added later for resilience and offline work; its implementation is deliberately deferred and is not the system of record.
 
 ## Native application organization
 
@@ -113,7 +113,7 @@ macos/
       Review/
       Settings/
     Domain/              records, use cases, service protocols
-    Persistence/         SQLite repositories, migrations, attachment vault
+    Persistence/         cache, draft, outbox, and attachment adapters
     Services/            tutoring, OCR, sync, and telemetry clients
   BetterNBTests/
   BetterNBUITests/
@@ -205,13 +205,15 @@ Attempts, steps, feedback, hints, and mastery events are append-only learning hi
 
 Model confidence is not mathematical correctness. Deterministic verification should be preferred when it applies, and the UI must distinguish verified results from model judgment.
 
-## Local persistence and sync
+## PostgreSQL, client caching, and sync
 
-Use SQLite behind repository protocols for structured local data. Store original files and large derived assets in an application-owned attachment vault rather than database blobs. Every local mutation commits in one local transaction and, when sync is enabled, appends an idempotent outbox event in the same transaction.
+Use PostgreSQL behind the Go service API for accounts, courses, resources, study history, revisions, mastery evidence, and synchronization metadata. Store large original files and derived assets in object storage rather than database blobs. The Mac app communicates only with the API, using short-lived authenticated sessions; it must never ship PostgreSQL connection details.
+
+Local caching remains behind repository protocols so it can be introduced without changing feature views. When enabled, a local mutation must preserve the draft and append an idempotent outbox event atomically before attempting upload. The cache technology should be chosen when offline behavior has executable tests; it is not required by the visual workspace prototype.
 
 Synchronization rules:
 
-- the app remains usable while offline;
+- cached material and unsent drafts remain usable while offline once the cache milestone ships;
 - attempts and mastery events merge as immutable records;
 - editable notes retain revisions and surface conflicts instead of choosing silently;
 - attachments use checksums and resumable transfer;
@@ -257,12 +259,13 @@ Cross-device support should be designed into identifiers and repositories from t
 ## Delivery sequence
 
 1. Keep the Go landing page and image-chat prototype running as the public preview.
-2. Scaffold the native macOS app with the sidebar, course workspace, local database, attachment vault, and no AI dependency.
-3. Rebuild direct image paste natively and persist problem attempts locally.
-4. Add the versioned tutoring contract and a calculus step-checking evaluation set.
-5. Deliver the guided calculus loop: attempt, check, hint, retry, and transfer problem.
-6. Add mastery events, targeted practice, formula cards, and review scheduling.
-7. Introduce accounts and cross-device sync after conflict rules pass local simulations.
-8. Expand verified learning workflows into physics and computer-science fundamentals.
+2. Scaffold the native macOS app with the sidebar, course workspace, design system, and no database or AI dependency.
+3. Define the PostgreSQL-backed service contract and the client repository boundary.
+4. Rebuild direct image paste natively and preserve problem drafts through the repository boundary.
+5. Add the versioned tutoring contract and a calculus step-checking evaluation set.
+6. Deliver the guided calculus loop: attempt, check, hint, retry, and transfer problem.
+7. Add mastery events, targeted practice, formula cards, and review scheduling.
+8. Introduce accounts, the local resilience cache, and cross-device sync after conflict rules pass simulations.
+9. Expand verified learning workflows into physics and computer-science fundamentals.
 
 The native scaffold is the next architectural milestone. Do not add production product depth to the web prototype before it exists.

@@ -1,3 +1,6 @@
 /betternb
 /var/
 /.cache/
+.build/
+.swiftpm/
+.DS_Store
