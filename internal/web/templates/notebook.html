@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Research notebook · BetterNB</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Notebook navigation">
+      <a class="brand" href="/" aria-label="BetterNB home">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <span>BetterNB</span>
+      </a>
+      <nav>
+        <p class="nav-label">Notebooks</p>
+        <a class="notebook-link active" href="/notebooks/{{.NotebookID}}" aria-current="page">
+          <span class="notebook-icon" aria-hidden="true">✦</span>
+          Research notebook
+        </a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot" aria-hidden="true"></span>
+        Stored on this server
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-header">
+        <div>
+          <p class="eyebrow">Notebook</p>
+          <h1>Research notebook</h1>
+        </div>
+        <div class="header-pill"><span aria-hidden="true">⌘</span> Paste images</div>
+      </header>
+
+      <section class="conversation" aria-label="Conversation">
+        {{if .Messages}}
+          <ol class="message-list">
+            {{range .Messages}}
+              <li class="message-row">
+                <article class="message-card">
+                  {{if .Attachment}}
+                    <a class="image-link" href="{{attachmentURL $.NotebookID .Attachment.ID}}" target="_blank" rel="noreferrer">
+                      <img class="message-image" src="{{attachmentURL $.NotebookID .Attachment.ID}}" alt="Image attachment: {{.Attachment.Filename}}">
+                    </a>
+                    <p class="attachment-name">{{.Attachment.Filename}}</p>
+                  {{end}}
+                  {{if .Text}}<p class="message-text">{{.Text}}</p>{{end}}
+                </article>
+              </li>
+            {{end}}
+          </ol>
+        {{else}}
+          <div class="empty-state">
+            <div class="empty-graphic" aria-hidden="true">
+              <span class="spark spark-one">✦</span>
+              <span class="image-glyph">▧</span>
+              <span class="spark spark-two">✦</span>
+            </div>
+            <p class="eyebrow">Start with what you can see</p>
+            <h2>Paste an image into your notebook</h2>
+            <p>Copy a screenshot, chart, or photo, then paste it below. Your image and message stay together.</p>
+          </div>
+        {{end}}
+      </section>
+
+      <section class="composer-wrap" aria-label="New message">
+        <form class="composer" method="post" action="/notebooks/{{.NotebookID}}/messages" enctype="multipart/form-data" data-composer>
+          {{if .Error}}<div class="form-error" role="alert">{{.Error}}</div>{{end}}
+          <div class="client-error" role="alert" aria-live="polite" data-client-error hidden></div>
+          <div class="image-preview" data-image-preview hidden>
+            <img alt="Selected image preview" data-preview-image>
+            <div class="preview-details">
+              <strong data-preview-name></strong>
+              <span>Ready to send</span>
+            </div>
+            <button class="remove-image" type="button" data-remove-image aria-label="Remove selected image">×</button>
+          </div>
+          <label class="sr-only" for="message-text">Message</label>
+          <textarea id="message-text" name="text" rows="2" placeholder="Ask a question or paste an image…" data-message-input>{{.DraftText}}</textarea>
+          <div class="composer-actions">
+            <div class="attachment-actions">
+              <input class="sr-only" id="image-input" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-image-input>
+              <label class="attach-button" for="image-input"><span aria-hidden="true">＋</span> Add image</label>
+              <span class="paste-hint">or press <kbd>⌘</kbd><kbd>V</kbd></span>
+            </div>
+            <button class="send-button" type="submit" data-send-button>
+              <span>Send</span>
+              <span aria-hidden="true">↑</span>
+            </button>
+          </div>
+        </form>
+        <p class="composer-footnote">PNG, JPEG, GIF, or WebP · 10 MiB maximum</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
