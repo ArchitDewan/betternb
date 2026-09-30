@@ -36,13 +36,13 @@ Use multi-agent execution when work is genuinely independent. Keep ordered desig
 Use feature identifiers so conversations, plans, branches, and worktrees remain easy to match:
 
 ```text
-F001 grounded notebook
-plan:     .agent/plans/F001-grounded-notebook.md
-branch:   feat/F001-grounded-notebook
-worktree: <worktree-root>/F001-grounded-notebook
+F004 native workspace shell
+plan:     .agent/plans/F004-native-workspace.md
+branch:   feat/F004-native-workspace
+worktree: <worktree-root>/F004-native-workspace
 ```
 
-A new session continuing `F001` reuses that worktree. A separate feature receives a new identifier and worktree.
+A new session continuing `F004` reuses that worktree. A separate feature receives a new identifier and worktree.
 
 ## When to run features in parallel
 

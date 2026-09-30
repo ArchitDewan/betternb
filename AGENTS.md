@@ -12,7 +12,9 @@ Current Go web application commands:
 - Static analysis: `go vet ./...`.
 - Build: `go build ./cmd/betternb`.
 
-There is not yet a separate formatter/linter command, Python service, database migration command, or deployment command.
+These commands cover the public landing page and temporary web prototype. The production product is the native macOS application defined in `docs/ARCHITECTURE.md`; its scaffold and canonical Xcode commands do not exist yet.
+
+There is not yet a separate formatter/linter command, native application command, Python service, database migration command, or deployment command.
 
 Use `docs/PRODUCT.md` for product scope, `docs/ARCHITECTURE.md` for system boundaries, and `docs/DEVELOPMENT.md` for the feature-session and worktree workflow. Read only the document relevant to the current task.
 

@@ -51,11 +51,11 @@ func New(config Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmpl, err := template.New("notebook.html").Funcs(template.FuncMap{
+	tmpl, err := template.New("pages").Funcs(template.FuncMap{
 		"attachmentURL": func(notebookID, attachmentID string) string {
 			return "/notebooks/" + url.PathEscape(notebookID) + "/attachments/" + url.PathEscape(attachmentID)
 		},
-	}).ParseFS(embeddedFiles, "templates/notebook.html")
+	}).ParseFS(embeddedFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
@@ -88,7 +88,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/notebooks/research", http.StatusFound)
+	a.renderTemplate(w, http.StatusOK, "landing.html", nil)
 }
 
 func (a *App) notebook(w http.ResponseWriter, r *http.Request) {
@@ -210,9 +210,13 @@ func (a *App) renderValidationError(w http.ResponseWriter, notebookID, message, 
 }
 
 func (a *App) renderNotebook(w http.ResponseWriter, status int, data pageData) {
+	a.renderTemplate(w, status, "notebook.html", data)
+}
+
+func (a *App) renderTemplate(w http.ResponseWriter, status int, name string, data any) {
 	var output bytes.Buffer
-	if err := a.template.ExecuteTemplate(&output, "notebook.html", data); err != nil {
-		a.logger.Error("render notebook", "error", err)
+	if err := a.template.ExecuteTemplate(&output, name, data); err != nil {
+		a.logger.Error("render template", "template", name, "error", err)
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 		return
 	}

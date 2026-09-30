@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="BetterNB is an active study workspace that turns math problems, equations, and course notes into guided practice.">
+  <title>BetterNB · Learn math by doing math</title>
+  <link rel="stylesheet" href="/assets/landing.css">
+  <script src="/assets/landing.js" defer></script>
+</head>
+<body class="landing-page">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="page-grain" aria-hidden="true"></div>
+
+  <header class="site-header" data-site-header>
+    <a class="landing-brand" href="/" aria-label="BetterNB home">
+      <span class="landing-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>BetterNB</span>
+    </a>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-menu-toggle>
+      <span></span><span></span><span></span><span class="sr-only">Toggle navigation</span>
+    </button>
+    <nav class="site-nav" id="site-navigation" aria-label="Primary navigation" data-site-nav>
+      <a href="#how-it-works">How it teaches</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#anywhere">Any device</a>
+    </nav>
+    <a class="nav-cta" href="/notebooks/research">Open prototype <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-glow hero-glow-one" aria-hidden="true"></div>
+      <div class="hero-glow hero-glow-two" aria-hidden="true"></div>
+      <div class="hero-copy" data-reveal>
+        <p class="kicker"><span></span> The active study workspace for technical minds</p>
+        <h1 id="hero-title">Learn math by<br><em>doing math.</em></h1>
+        <p class="hero-lede">Turn lecture notes, equations, diagrams, and problem sets into guided practice—with an AI tutor that checks your reasoning, not just the final answer.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="/notebooks/research">Start a study session <span aria-hidden="true">↗</span></a>
+          <a class="button button-ghost" href="#how-it-works">See how it teaches <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="release-note"><span class="live-dot"></span> Prototype live · Direct image paste available now</p>
+      </div>
+
+      <div class="hero-product" data-tilt data-reveal role="img" aria-label="BetterNB guided math study interface preview">
+        <div class="orbit orbit-one" aria-hidden="true"></div>
+        <div class="orbit orbit-two" aria-hidden="true"></div>
+        <div class="source-float source-float-pdf" aria-hidden="true"><b>SET</b><span>Problem set 06</span></div>
+        <div class="source-float source-float-web" aria-hidden="true"><b>NOTE</b><span>Lecture 14</span></div>
+        <div class="source-float source-float-image" aria-hidden="true"><b>WORK</b><span>Pasted solution</span></div>
+
+        <div class="product-window">
+          <div class="window-bar">
+            <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span>Calculus II</span>
+            <span class="window-status"><i></i> Synced</span>
+          </div>
+          <div class="window-body">
+            <aside class="mini-sidebar" aria-hidden="true">
+              <div class="mini-logo">B</div>
+              <i class="active"></i><i></i><i></i><i></i>
+              <span></span>
+            </aside>
+            <div class="mini-chat">
+              <div class="chat-context">
+                <span class="context-label">Course context</span>
+                <span class="context-pill">Lecture 14</span><span class="context-pill">Formula sheet</span>
+              </div>
+              <div class="question-bubble">I keep getting the wrong sign. Where did I go off track?</div>
+              <article class="answer-card">
+                <div class="answer-head"><span class="answer-spark">✦</span><strong>Let's check your steps</strong></div>
+                <p>Your substitution is right. The sign changes when you update the bounds—look again at what happens to du.</p>
+                <div class="citation-row"><span><b>1</b> Step 2</span><span><b>2</b> Hint</span><span class="support-tag">No answer revealed</span></div>
+              </article>
+              <div class="chat-composer"><span>Show me your next step…</span><b>↑</b></div>
+            </div>
+            <aside class="evidence-panel">
+              <p>Step check</p>
+              <div class="evidence-score"><span>Reasoning so far</span><b>3 / 4</b></div>
+              <div class="score-bar"><i></i></div>
+              <blockquote>u = cos(x), so du = −sin(x)dx</blockquote>
+              <span class="evidence-source">Sign dropped on line 3</span>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <a class="scroll-cue" href="#manifesto"><span>Scroll to explore</span><i aria-hidden="true"></i></a>
+    </section>
+
+    <div class="source-ribbon" aria-label="Planned study inputs">
+      <div class="ribbon-track">
+        <span>Lecture notes</span><i>✦</i><span>Problem sets</span><i>✦</i><span>Equations</span><i>✦</i><span>Handwritten work</span><i>✦</i><span>Textbooks</span><i>✦</i><span>Code</span><i>✦</i>
+        <span aria-hidden="true">Lecture notes</span><i aria-hidden="true">✦</i><span aria-hidden="true">Problem sets</span><i aria-hidden="true">✦</i><span aria-hidden="true">Equations</span><i aria-hidden="true">✦</i><span aria-hidden="true">Handwritten work</span><i aria-hidden="true">✦</i><span aria-hidden="true">Textbooks</span><i aria-hidden="true">✦</i><span aria-hidden="true">Code</span><i aria-hidden="true">✦</i>
+      </div>
+    </div>
+
+    <section class="manifesto" id="manifesto">
+      <p class="section-index">01 / The idea</p>
+      <div class="manifesto-copy" data-reveal>
+        <p class="manifesto-small">Most AI solves the problem for you.</p>
+        <h2>BetterNB helps you become the person <em>who can solve it.</em></h2>
+      </div>
+      <div class="manifesto-aside" data-reveal>
+        <p>It learns the context of your course, follows the notation you use, and gives the next useful hint instead of stealing the productive struggle.</p>
+        <div class="principle-row"><span>Attempt</span><i></i><span>Feedback</span><i></i><span>Practice</span></div>
+      </div>
+    </section>
+
+    <section class="story" id="how-it-works" data-story aria-labelledby="story-title">
+      <div class="story-heading">
+        <p class="section-index">02 / The learning loop</p>
+        <h2 id="story-title">From stuck<br>to solid.</h2>
+      </div>
+
+      <div class="story-layout">
+        <div class="story-stage-wrap">
+          <div class="story-stage" data-story-stage data-active-step="0">
+            <div class="story-topline">
+              <span data-stage-label>Set context</span>
+              <div class="story-progress"><i data-story-progress-bar></i></div>
+              <span data-stage-count>01 / 04</span>
+            </div>
+            <div class="story-canvas">
+              <div class="source-stack" aria-hidden="true">
+                <article class="source-card source-card-one"><span>NOTES</span><b>Lecture 14</b><i></i><i></i><i></i></article>
+                <article class="source-card source-card-two"><span>SET</span><b>Practice problems</b><i></i><i></i></article>
+                <article class="source-card source-card-three"><span>WORK</span><b>Your attempt</b><div class="tiny-chart"><i></i><i></i><i></i><i></i></div></article>
+              </div>
+
+              <div class="knowledge-core" aria-hidden="true">
+                <span class="core-ring"></span><span class="core-ring core-ring-two"></span>
+                <b>NB</b>
+              </div>
+              <div class="flow-line flow-line-in" aria-hidden="true"><i></i></div>
+              <div class="flow-line flow-line-out" aria-hidden="true"><i></i></div>
+
+              <article class="story-answer" aria-hidden="true">
+                <div><span>✦</span><b>A hint, not a shortcut</b></div>
+                <p>Try rewriting the denominator before you integrate. Which identity from lecture 14 applies here?</p>
+                <div class="story-citations"><i>1</i><i>2</i><i>3</i></div>
+              </article>
+
+              <div class="evidence-lens" aria-hidden="true">
+                <span>Step check</span>
+                <b>Line 03</b>
+                <div><i></i><i></i><i></i></div>
+                <p>Sign error found</p>
+              </div>
+
+              <div class="output-deck" aria-hidden="true">
+                <article><span>01</span><b>Practice set</b></article>
+                <article><span>02</span><b>Flashcards</b></article>
+                <article><span>03</span><b>Formula sheet</b></article>
+                <article><span>04</span><b>Review plan</b></article>
+              </div>
+            </div>
+            <p class="stage-caption" data-stage-caption>Bring in the notation, examples, and methods your course actually uses.</p>
+          </div>
+        </div>
+
+        <div class="story-steps">
+          <article class="story-step" data-story-step data-step="0">
+            <span>01</span><p class="status-chip status-now">Available now</p>
+            <h3>Bring the class with you.</h3>
+            <p>Add lecture notes, textbook sections, worked examples, and formula sheets. Paste a problem or handwritten attempt directly into chat.</p>
+          </article>
+          <article class="story-step" data-story-step data-step="1">
+            <span>02</span><p class="status-chip status-next">Coming next</p>
+            <h3>Work the problem one step at a time.</h3>
+            <p>Start with what you know. BetterNB asks what you tried, follows your notation, and offers a small nudge before a stronger hint.</p>
+          </article>
+          <article class="story-step" data-story-step data-step="2">
+            <span>03</span><p class="status-chip status-next">Coming next</p>
+            <h3>Find exactly where the reasoning broke.</h3>
+            <p>Check each meaningful step and distinguish a conceptual gap from an algebra, notation, sign, or arithmetic mistake.</p>
+          </article>
+          <article class="story-step" data-story-step data-step="3">
+            <span>04</span><p class="status-chip status-planned">Planned</p>
+            <h3>Practice the idea until it transfers.</h3>
+            <p>Get a nearby problem that tests the same concept in a new form, then schedule weak skills for focused review.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="capabilities" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="section-heading" data-reveal>
+        <p class="section-index">03 / Built for learning</p>
+        <h2 id="capabilities-title">The way math is<br><em>actually learned.</em></h2>
+        <p>BetterNB is being built in honest layers: capture mathematical work now, guide problem solving next, then adapt practice around real mastery.</p>
+      </div>
+
+      <div class="bento-grid">
+        <article class="bento-card bento-chat" data-reveal>
+          <div class="bento-meta"><span>Now</span><i>01</i></div>
+          <h3>Paste the problem—and your work—straight into chat.</h3>
+          <p>Keep the equation, diagram, attempt, and question together. No throwaway document required.</p>
+          <div class="paste-demo" aria-hidden="true">
+            <div class="paste-image"><span></span><i></i><b>figure.png</b></div>
+            <div class="paste-input">Where did my proof go wrong?<b>↑</b></div>
+          </div>
+        </article>
+
+        <article class="bento-card bento-discover" data-reveal>
+          <div class="bento-meta"><span>Next</span><i>02</i></div>
+          <h3>Get unstuck without being handed the answer.</h3>
+          <p>Move through a hint ladder—from a nudge, to a method reminder, to a worked explanation only when you choose.</p>
+          <div class="search-demo" aria-hidden="true">
+            <span class="search-query">Hint 01 · Look for a substitution</span>
+            <div><i>Need another nudge?</i><b>Which expression has a derivative nearby?</b></div>
+            <div><i>Method reminder</i><b>Rewrite before choosing u</b></div>
+          </div>
+        </article>
+
+        <article class="bento-card bento-evidence" data-reveal>
+          <div class="bento-meta"><span>Next</span><i>03</i></div>
+          <h3>Know exactly where your reasoning broke.</h3>
+          <p>Step checking separates conceptual gaps from algebra mistakes, sign errors, and notation issues.</p>
+          <div class="support-orbit" aria-hidden="true">
+            <span class="support-score">3<small>/4</small></span>
+            <i></i><i></i><i></i>
+            <b>Steps correct</b>
+          </div>
+        </article>
+
+        <article class="bento-card bento-create" data-reveal>
+          <div class="bento-meta"><span>Planned</span><i>04</i></div>
+          <h3>Practice what you are weak at—not what is easy.</h3>
+          <p>Targeted problems, mastery tracking, formula cards, and spaced review turn mistakes into a study plan.</p>
+          <div class="format-cloud" aria-hidden="true">
+            <span>Limits</span><span>Vectors</span><span>Integrals</span><span>Proofs</span><span>Algebra</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="anywhere" id="anywhere" aria-labelledby="anywhere-title">
+      <div class="device-copy" data-reveal>
+        <p class="section-index light">04 / Any device</p>
+        <h2 id="anywhere-title">Your study session should not end when you leave your desk.</h2>
+        <p>Carry the same problems, attempts, hints, and mastery progress from laptop to phone, so ten spare minutes can become one useful review.</p>
+        <ul><li><i></i> One continuous course workspace</li><li><i></i> Practice on any screen</li><li><i></i> Progress that follows you</li></ul>
+      </div>
+      <div class="device-stage" data-reveal role="img" aria-label="BetterNB shown on desktop and phone">
+        <div class="device-orbit" aria-hidden="true"></div>
+        <div class="laptop-device" aria-hidden="true">
+          <div class="laptop-screen">
+            <div class="device-bar"><i></i><span>BetterNB</span></div>
+            <div class="device-content"><aside></aside><main><span></span><b></b><i></i><i></i></main></div>
+          </div><div class="laptop-base"></div>
+        </div>
+        <div class="phone-device" aria-hidden="true">
+          <div class="phone-camera"></div>
+          <div class="phone-ui"><b>B</b><span></span><div></div><i></i><i></i></div>
+        </div>
+        <span class="sync-chip sync-chip-one" aria-hidden="true">Synced 2s ago</span>
+        <span class="sync-chip sync-chip-two" aria-hidden="true">Same notebook</span>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="cta-title">
+      <div class="cta-orbit cta-orbit-one" aria-hidden="true"></div><div class="cta-orbit cta-orbit-two" aria-hidden="true"></div>
+      <p class="kicker"><span></span> Calculus first · Physics and CS next</p>
+      <h2 id="cta-title">Don't just get the answer.<br><em>Build the instinct.</em></h2>
+      <p>BetterNB is early and being built in public—one useful learning interaction at a time.</p>
+      <a class="button button-primary button-large" href="/notebooks/research">Start studying <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="landing-brand footer-brand" href="/"><span class="landing-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>BetterNB</span></a>
+    <p>An active study workspace for mathematics.</p>
+    <div><a href="#how-it-works">How it teaches</a><a href="/notebooks/research">Prototype</a><span>© 2026 BetterNB</span></div>
+  </footer>
+</body>
+</html>

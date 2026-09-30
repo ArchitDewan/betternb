@@ -15,6 +15,35 @@ import (
 	"testing"
 )
 
+func TestLandingPage(t *testing.T) {
+	app, err := New(Config{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	app.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET / status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		"Learn math by doing math",
+		"checks your reasoning",
+		`href="/notebooks/research"`,
+		`id="how-it-works"`,
+		`data-story-stage`,
+		`/assets/landing.css`,
+		`/assets/landing.js`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("landing page does not contain %q", expected)
+		}
+	}
+}
+
 func TestImageMessagePersistsAcrossAppRestart(t *testing.T) {
 	dataDir := t.TempDir()
 	imageBytes := testPNG(t)
