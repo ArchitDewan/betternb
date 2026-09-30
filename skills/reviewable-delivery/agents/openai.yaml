@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reviewable Delivery"
+  short_description: "Build, verify, review, and safely ship changes"
+  default_prompt: "Use $reviewable-delivery to implement this change with test evidence and a review-ready handoff."
