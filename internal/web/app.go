@@ -40,10 +40,11 @@ type App struct {
 }
 
 type pageData struct {
-	NotebookID string
-	Messages   []chat.Message
-	Error      string
-	DraftText  string
+	Notebook  chat.Notebook
+	Notebooks []chat.Notebook
+	Messages  []chat.Message
+	Error     string
+	DraftText string
 }
 
 func New(config Config) (*App, error) {
@@ -64,6 +65,9 @@ func New(config Config) (*App, error) {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	app := &App{store: store, template: tmpl, logger: logger}
+	if _, err := store.EnsureNotebook("research", "Research notebook"); err != nil {
+		return nil, fmt.Errorf("ensure initial notebook: %w", err)
+	}
 
 	assets, err := fs.Sub(embeddedFiles, "assets")
 	if err != nil {
@@ -72,6 +76,7 @@ func New(config Config) (*App, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", app.home)
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(assets)))
+	mux.HandleFunc("POST /notebooks", app.createNotebook)
 	mux.HandleFunc("GET /notebooks/{notebookID}", app.notebook)
 	mux.HandleFunc("POST /notebooks/{notebookID}/messages", app.createMessage)
 	mux.HandleFunc("GET /notebooks/{notebookID}/attachments/{attachmentID}", app.attachment)
@@ -91,10 +96,19 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	a.renderTemplate(w, http.StatusOK, "landing.html", nil)
 }
 
+func (a *App) createNotebook(w http.ResponseWriter, r *http.Request) {
+	notebook, err := a.store.CreateNotebook()
+	if err != nil {
+		a.internalError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/notebooks/"+url.PathEscape(notebook.ID), http.StatusSeeOther)
+}
+
 func (a *App) notebook(w http.ResponseWriter, r *http.Request) {
 	notebookID := r.PathValue("notebookID")
-	messages, err := a.store.Messages(notebookID)
-	if errors.Is(err, chat.ErrInvalidNotebook) {
+	notebook, err := a.store.Notebook(notebookID)
+	if errors.Is(err, chat.ErrNotFound) || errors.Is(err, chat.ErrInvalidNotebook) {
 		http.NotFound(w, r)
 		return
 	}
@@ -102,7 +116,17 @@ func (a *App) notebook(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, r, err)
 		return
 	}
-	a.renderNotebook(w, http.StatusOK, pageData{NotebookID: notebookID, Messages: messages})
+	messages, err := a.store.Messages(notebookID)
+	if err != nil {
+		a.internalError(w, r, err)
+		return
+	}
+	notebooks, err := a.store.Notebooks()
+	if err != nil {
+		a.internalError(w, r, err)
+		return
+	}
+	a.renderNotebook(w, http.StatusOK, pageData{Notebook: notebook, Notebooks: notebooks, Messages: messages})
 }
 
 func (a *App) createMessage(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +154,7 @@ func (a *App) createMessage(w http.ResponseWriter, r *http.Request) {
 		a.renderValidationError(w, notebookID, "Add a message or paste an image before sending.", text)
 		return
 	}
-	if _, err := a.store.AddMessage(notebookID, text, image); errors.Is(err, chat.ErrInvalidNotebook) {
+	if _, err := a.store.AddMessage(notebookID, text, image); errors.Is(err, chat.ErrInvalidNotebook) || errors.Is(err, chat.ErrNotFound) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
@@ -191,21 +215,34 @@ func allowedImageType(mediaType string) bool {
 }
 
 func (a *App) renderValidationError(w http.ResponseWriter, notebookID, message, draftText string) {
-	messages, err := a.store.Messages(notebookID)
-	if errors.Is(err, chat.ErrInvalidNotebook) {
+	notebook, err := a.store.Notebook(notebookID)
+	if errors.Is(err, chat.ErrNotFound) || errors.Is(err, chat.ErrInvalidNotebook) {
 		http.Error(w, "Not found.", http.StatusNotFound)
 		return
 	}
+	if err != nil {
+		a.logger.Error("load notebook for validation response", "notebook_id", notebookID, "error", err)
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+	messages, err := a.store.Messages(notebookID)
 	if err != nil {
 		a.logger.Error("load messages for validation response", "notebook_id", notebookID, "error", err)
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 		return
 	}
+	notebooks, err := a.store.Notebooks()
+	if err != nil {
+		a.logger.Error("list notebooks for validation response", "notebook_id", notebookID, "error", err)
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
 	a.renderNotebook(w, http.StatusUnprocessableEntity, pageData{
-		NotebookID: notebookID,
-		Messages:   messages,
-		Error:      message,
-		DraftText:  draftText,
+		Notebook:  notebook,
+		Notebooks: notebooks,
+		Messages:  messages,
+		Error:     message,
+		DraftText: draftText,
 	})
 }
 

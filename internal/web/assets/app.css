@@ -61,12 +61,15 @@ button, textarea, input { font: inherit; }
 
 .sidebar nav { margin-top: 44px; }
 .nav-label, .eyebrow { margin: 0; color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.notebook-nav-heading { display: grid; gap: 12px; }
+.new-notebook-button { width: 100%; padding: 10px 12px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #d9d1f0; border-radius: 10px; color: var(--purple-dark); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 720; box-shadow: 0 5px 16px rgb(75 52 151 / 7%); }
+.new-notebook-button:hover { border-color: #ad9be9; background: var(--purple-soft); }
+.notebook-list { display: grid; gap: 3px; margin-top: 10px; }
 
 .notebook-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
   padding: 11px 12px;
   border-radius: 10px;
   color: #4b4658;
@@ -77,6 +80,7 @@ button, textarea, input { font: inherit; }
 
 .notebook-link.active { color: var(--purple-dark); background: var(--purple-soft); }
 .notebook-icon { font-size: 16px; }
+.notebook-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sidebar-note { margin-top: auto; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #27a96b; box-shadow: 0 0 0 3px #ddf5e9; }
@@ -146,7 +150,11 @@ kbd { display: inline-block; min-width: 20px; margin-left: 2px; padding: 2px 4px
 @media (max-width: 720px) {
   .app-shell { display: block; }
   .sidebar { position: static; width: 100%; height: auto; padding: 15px 18px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .sidebar nav, .sidebar-note { display: none; }
+  .sidebar nav { margin-top: 14px; }
+  .sidebar-note, .nav-label { display: none; }
+  .notebook-nav-heading { display: block; }
+  .new-notebook-button { width: auto; }
+  .notebook-list { grid-auto-flow: column; grid-auto-columns: minmax(150px, max-content); overflow-x: auto; padding-bottom: 2px; }
   .workspace { min-height: calc(100vh - 65px); }
   .workspace-header { height: 76px; padding: 0 20px; }
   .header-pill { display: none; }

@@ -11,6 +11,9 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -40,6 +43,97 @@ func TestLandingPage(t *testing.T) {
 	} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("landing page does not contain %q", expected)
+		}
+	}
+}
+
+func TestCreateNotebookAddsItToNavigationAndOpensItsChat(t *testing.T) {
+	server := newTestServer(t, t.TempDir())
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/notebooks", nil)
+	if err != nil {
+		t.Fatalf("new create notebook request: %v", err)
+	}
+	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("POST notebook: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("POST notebook status = %d, want %d; body: %s", response.StatusCode, http.StatusSeeOther, body)
+	}
+
+	location := response.Header.Get("Location")
+	if !regexp.MustCompile(`^/notebooks/[a-f0-9]{32}$`).MatchString(location) {
+		t.Fatalf("notebook redirect = %q, want generated notebook URL", location)
+	}
+	body := readBody(t, get(t, server.URL+location))
+	for _, expected := range []string{"New notebook", "Research notebook", `aria-current="page"`} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("new notebook page does not contain %q; body: %s", expected, body)
+		}
+	}
+}
+
+func TestNotebookNavigationRestoresEachConversation(t *testing.T) {
+	dataDir := t.TempDir()
+	first := newTestServer(t, dataDir)
+	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Post(first.URL+"/notebooks", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST notebook: %v", err)
+	}
+	newLocation := response.Header.Get("Location")
+	response.Body.Close()
+	newNotebookID := strings.TrimPrefix(newLocation, "/notebooks/")
+
+	postMessage(t, first.URL, "research", "Message in research", "", "", nil)
+	postMessage(t, first.URL, newNotebookID, "Message in the new notebook", "", "", nil)
+	first.Close()
+
+	second := newTestServer(t, dataDir)
+	defer second.Close()
+	researchBody := readBody(t, get(t, second.URL+"/notebooks/research"))
+	newBody := readBody(t, get(t, second.URL+newLocation))
+	if !strings.Contains(researchBody, "Message in research") || strings.Contains(researchBody, "Message in the new notebook") {
+		t.Errorf("research conversation was not isolated; body: %s", researchBody)
+	}
+	if !strings.Contains(newBody, "Message in the new notebook") || strings.Contains(newBody, "Message in research") {
+		t.Errorf("new notebook conversation was not restored independently; body: %s", newBody)
+	}
+}
+
+func TestUnknownNotebookURLIsNotCreated(t *testing.T) {
+	server := newTestServer(t, t.TempDir())
+	defer server.Close()
+
+	response := get(t, server.URL+"/notebooks/made-up-in-the-url")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Errorf("GET unknown notebook status = %d, want %d", response.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestLegacyURLNotebookIsAddedToNavigation(t *testing.T) {
+	dataDir := t.TempDir()
+	legacyDir := filepath.Join(dataDir, "notebooks", "project_notes")
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatalf("create legacy notebook directory: %v", err)
+	}
+	legacyMessages := `[{"id":"legacy","text":"Preserved conversation","created_at":"2026-09-30T12:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(legacyDir, "messages.json"), []byte(legacyMessages), 0o600); err != nil {
+		t.Fatalf("write legacy messages: %v", err)
+	}
+
+	server := newTestServer(t, dataDir)
+	defer server.Close()
+	body := readBody(t, get(t, server.URL+"/notebooks/project_notes"))
+	for _, expected := range []string{"Project notes", "Preserved conversation"} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("migrated notebook page does not contain %q; body: %s", expected, body)
 		}
 	}
 }

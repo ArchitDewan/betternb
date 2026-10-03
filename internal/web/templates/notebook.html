@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Research notebook · BetterNB</title>
+  <title>{{.Notebook.Title}} · BetterNB</title>
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/assets/app.js" defer></script>
 </head>
@@ -15,11 +15,23 @@
         <span>BetterNB</span>
       </a>
       <nav>
-        <p class="nav-label">Notebooks</p>
-        <a class="notebook-link active" href="/notebooks/{{.NotebookID}}" aria-current="page">
-          <span class="notebook-icon" aria-hidden="true">✦</span>
-          Research notebook
-        </a>
+        <div class="notebook-nav-heading">
+          <p class="nav-label">Notebooks</p>
+          <form method="post" action="/notebooks">
+            <button class="new-notebook-button" type="submit">
+              <span aria-hidden="true">＋</span>
+              <span>New notebook</span>
+            </button>
+          </form>
+        </div>
+        <div class="notebook-list">
+          {{range .Notebooks}}
+            <a class="notebook-link{{if eq .ID $.Notebook.ID}} active{{end}}" href="/notebooks/{{.ID}}"{{if eq .ID $.Notebook.ID}} aria-current="page"{{end}}>
+              <span class="notebook-icon" aria-hidden="true">✦</span>
+              <span class="notebook-title">{{.Title}}</span>
+            </a>
+          {{end}}
+        </div>
       </nav>
       <div class="sidebar-note">
         <span class="status-dot" aria-hidden="true"></span>
@@ -31,7 +43,7 @@
       <header class="workspace-header">
         <div>
           <p class="eyebrow">Notebook</p>
-          <h1>Research notebook</h1>
+          <h1>{{.Notebook.Title}}</h1>
         </div>
         <div class="header-pill"><span aria-hidden="true">⌘</span> Paste images</div>
       </header>
@@ -43,8 +55,8 @@
               <li class="message-row">
                 <article class="message-card">
                   {{if .Attachment}}
-                    <a class="image-link" href="{{attachmentURL $.NotebookID .Attachment.ID}}" target="_blank" rel="noreferrer">
-                      <img class="message-image" src="{{attachmentURL $.NotebookID .Attachment.ID}}" alt="Image attachment: {{.Attachment.Filename}}">
+                    <a class="image-link" href="{{attachmentURL $.Notebook.ID .Attachment.ID}}" target="_blank" rel="noreferrer">
+                      <img class="message-image" src="{{attachmentURL $.Notebook.ID .Attachment.ID}}" alt="Image attachment: {{.Attachment.Filename}}">
                     </a>
                     <p class="attachment-name">{{.Attachment.Filename}}</p>
                   {{end}}
@@ -68,7 +80,7 @@
       </section>
 
       <section class="composer-wrap" aria-label="New message">
-        <form class="composer" method="post" action="/notebooks/{{.NotebookID}}/messages" enctype="multipart/form-data" data-composer>
+        <form class="composer" method="post" action="/notebooks/{{.Notebook.ID}}/messages" enctype="multipart/form-data" data-composer>
           {{if .Error}}<div class="form-error" role="alert">{{.Error}}</div>{{end}}
           <div class="client-error" role="alert" aria-live="polite" data-client-error hidden></div>
           <div class="image-preview" data-image-preview hidden>
