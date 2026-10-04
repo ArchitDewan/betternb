@@ -3,6 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selection: WorkspaceDestination
     @Environment(\.workspaceZoom) private var zoom
+    @EnvironmentObject private var authentication: AuthenticationSession
     @State private var calculusExpanded = true
     @State private var linearAlgebraExpanded = false
 
@@ -104,23 +105,40 @@ struct SidebarView: View {
     }
 
     private var accountFooter: some View {
-        HStack(spacing: 8 * zoom) {
-            Circle()
-                .fill(AppTheme.elevatedHover)
-                .frame(width: 20 * zoom, height: 20 * zoom)
-                .overlay {
-                    Text("AD")
-                        .zFont(7, weight: .bold, zoom: zoom)
+        Menu {
+            Button("Sign Out", role: .destructive) {
+                Task { await authentication.signOut() }
+            }
+        } label: {
+            HStack(spacing: 8 * zoom) {
+                Circle()
+                    .fill(AppTheme.elevatedHover)
+                    .frame(width: 20 * zoom, height: 20 * zoom)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .zFont(8, weight: .bold, zoom: zoom)
+                            .foregroundStyle(AppTheme.primaryText)
+                    }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("BetterNB account")
+                        .zFont(12, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
+                        .lineLimit(1)
+                    if case .offlineAuthenticated = authentication.state {
+                        Text("Offline")
+                            .zFont(9, weight: .medium, zoom: zoom)
+                            .foregroundStyle(AppTheme.tertiaryText)
+                    }
                 }
 
-            Text("Archit Dewan")
-                .zFont(12, zoom: zoom)
-                .foregroundStyle(AppTheme.primaryText)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+                Image(systemName: "ellipsis")
+                    .zFont(10, weight: .medium, zoom: zoom)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
         }
+        .menuStyle(.borderlessButton)
         .padding(.leading, 14 * zoom)
         .padding(.trailing, 8 * zoom)
         .padding(.vertical, 10 * zoom)

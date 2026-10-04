@@ -10,11 +10,25 @@ let package = Package(
     products: [
         .executable(name: "BetterNB", targets: ["BetterNB"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/auth0/Auth0.swift", .upToNextMinor(from: "2.11.0")),
+    ],
     targets: [
         .executableTarget(
             name: "BetterNB",
+            dependencies: [
+                .product(name: "Auth0", package: "Auth0.swift"),
+            ],
             path: "macos/BetterNB",
             exclude: ["Resources"]
+        ),
+        .testTarget(
+            name: "BetterNBTests",
+            dependencies: [
+                "BetterNB",
+                .product(name: "Auth0", package: "Auth0.swift"),
+            ],
+            path: "macos/BetterNBTests"
         ),
     ]
 )

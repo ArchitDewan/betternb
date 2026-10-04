@@ -5,10 +5,15 @@ import AppKit
 struct BetterNBApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appearance = WorkspaceAppearance()
+    @StateObject private var authentication: AuthenticationSession
+
+    init() {
+        _authentication = StateObject(wrappedValue: AppDependencies.makeAuthenticationSession())
+    }
 
     var body: some Scene {
         WindowGroup {
-            WorkspaceShellView()
+            AuthenticationGateView(session: authentication)
                 .preferredColorScheme(.dark)
                 .environment(\.workspaceZoom, appearance.factor)
                 .frame(
