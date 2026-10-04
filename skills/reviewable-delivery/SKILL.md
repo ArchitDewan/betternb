@@ -26,6 +26,7 @@ Use the task, rather than the conversation, as the isolation boundary. Before ed
 - If the current checkout is already clean and dedicated to the task, keep using it. If it contains another task or unrelated uncommitted work, create or select a separate worktree before editing.
 - Do not copy, move, stash, discard, or commit existing uncommitted changes merely to create isolation. Ask for direction if the new task depends on those changes.
 - Do not remove a task worktree or branch at handoff. Report its path and branch and leave cleanup to an explicit user request.
+- When repository instructions define a persistent worktree root, use that exact root. Never substitute `/tmp`, `/private/tmp`, or another ephemeral location merely to avoid requesting sandbox approval.
 
 When a repository has no initial commit, Git cannot create an additional worktree. Keep initial setup in the primary checkout and do not create a baseline commit unless the user requests it.
 
