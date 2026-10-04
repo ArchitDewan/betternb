@@ -70,6 +70,8 @@ A single student can:
 
 The slice is complete only when the tutor's mathematical feedback is correct, the hint sequence genuinely preserves productive struggle, and the follow-up problem tests transfer rather than superficial repetition.
 
+The workflow to finish that notebook — what is already shipped, the remaining feature sequence, and the “done” bar — lives in [MATH-NOTEBOOK.md](MATH-NOTEBOOK.md).
+
 ## Later feature tracks
 
 - Mathematics: algebra, calculus, linear algebra, differential equations, probability, discrete math, and proof practice.

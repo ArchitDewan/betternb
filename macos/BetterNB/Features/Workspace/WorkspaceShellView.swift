@@ -5,6 +5,8 @@ struct WorkspaceShellView: View {
     @State private var conversations = WorkspaceConversationStore(
         repository: InMemoryChannelMessageRepository()
     )
+    @State private var tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
+    @State private var problemSet = ProblemSetStore()
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
@@ -28,7 +30,15 @@ struct WorkspaceShellView: View {
         case .home, .overview:
             CourseWorkspaceView(selection: $selection)
         case .practice:
-            PracticeSessionView(conversations: conversations)
+            PracticeSessionView(tutor: tutor)
+        case .problems:
+            ProblemSetView(store: problemSet) { item in
+                problemSet.markOpened(item.id)
+                Task {
+                    _ = await tutor.beginProblem(item.prompt)
+                    selection = .practice
+                }
+            }
         case let destination where destination.acceptsMessages:
             ChannelConversationView(destination: destination, conversations: conversations)
         default:
