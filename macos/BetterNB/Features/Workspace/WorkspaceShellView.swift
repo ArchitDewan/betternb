@@ -2,6 +2,9 @@ import SwiftUI
 
 struct WorkspaceShellView: View {
     @State private var selection: WorkspaceDestination = .home
+    @State private var conversations = WorkspaceConversationStore(
+        repository: InMemoryChannelMessageRepository()
+    )
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
@@ -25,7 +28,9 @@ struct WorkspaceShellView: View {
         case .home, .overview:
             CourseWorkspaceView(selection: $selection)
         case .practice:
-            PracticeSessionView()
+            PracticeSessionView(conversations: conversations)
+        case let destination where destination.acceptsMessages:
+            ChannelConversationView(destination: destination, conversations: conversations)
         default:
             WorkspacePlaceholderView(destination: selection)
         }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum WorkspaceDestination: String, CaseIterable, Identifiable {
+enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     case home
     case search
     case review
@@ -58,6 +58,15 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable {
         .formulaSheet,
         .canvas,
     ]
+
+    var acceptsMessages: Bool {
+        switch self {
+        case .materials, .notes, .problems, .practice, .flashcards, .formulaSheet, .canvas:
+            true
+        case .home, .search, .review, .overview:
+            false
+        }
+    }
 }
 
 enum WorkspaceLayout {
@@ -125,8 +134,8 @@ struct RecentStudyItem: Identifiable, Equatable {
     ]
 }
 
-struct SessionMessage: Identifiable, Equatable {
-    enum Role {
+struct SessionMessage: Identifiable, Equatable, Sendable {
+    enum Role: Sendable {
         case tutor
         case student
     }
@@ -134,11 +143,18 @@ struct SessionMessage: Identifiable, Equatable {
     let id: UUID
     let role: Role
     let text: String
+    let attachment: MessageAttachment?
 
-    init(id: UUID = UUID(), role: Role, text: String) {
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        text: String,
+        attachment: MessageAttachment? = nil
+    ) {
         self.id = id
         self.role = role
         self.text = text
+        self.attachment = attachment
     }
 
     static let opening: [SessionMessage] = [

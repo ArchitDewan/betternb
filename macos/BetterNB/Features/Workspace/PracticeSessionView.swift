@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct PracticeSessionView: View {
+    let conversations: WorkspaceConversationStore
     @Environment(\.workspaceZoom) private var zoom
     @State private var draft = ""
-    @State private var messages = SessionMessage.opening
+    @State private var attachment: MessageAttachment?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,8 +13,8 @@ struct PracticeSessionView: View {
                     VStack(alignment: .leading, spacing: 22 * zoom) {
                         sessionHeader
 
-                        ForEach(messages) { message in
-                            sessionBubble(message)
+                        ForEach(conversations.messages(in: .practice)) { message in
+                            ChannelMessageBubble(message: message)
                                 .id(message.id)
                         }
                     }
@@ -24,8 +25,8 @@ struct PracticeSessionView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .scrollIndicators(.hidden)
-                .onChange(of: messages.count) { _, _ in
-                    if let last = messages.last {
+                .onChange(of: conversations.messages(in: .practice).count) { _, _ in
+                    if let last = conversations.messages(in: .practice).last {
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
@@ -36,6 +37,9 @@ struct PracticeSessionView: View {
             composer
         }
         .background(AppTheme.canvas)
+        .task {
+            await conversations.load(.practice)
+        }
     }
 
     private var sessionHeader: some View {
@@ -56,37 +60,16 @@ struct PracticeSessionView: View {
         }
     }
 
-    private func sessionBubble(_ message: SessionMessage) -> some View {
-        HStack {
-            if message.role == .student {
-                Spacer(minLength: 48 * zoom)
-            }
-
-            Text(message.text)
-                .zFont(17, zoom: zoom)
-                .foregroundStyle(AppTheme.primaryText)
-                .lineSpacing(4)
-                .padding(message.role == .student ? 12 * zoom : 0)
-                .background(
-                    message.role == .student
-                        ? AppTheme.paper
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .frame(
-                    maxWidth: message.role == .student ? 520 * zoom : .infinity,
-                    alignment: .leading
-                )
-
-            if message.role == .tutor {
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
     private var composer: some View {
         VStack(spacing: 10 * zoom) {
-            if messages.count == 1 {
+            if let error = conversations.errorsByChannel[.practice] {
+                Text(error)
+                    .zFont(12, zoom: zoom)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
+            }
+
+            if conversations.messages(in: .practice).count == 1 {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10 * zoom) {
                         suggestion("The left side looks higher")
@@ -100,7 +83,11 @@ struct PracticeSessionView: View {
                 .frame(maxWidth: AppTheme.composerMaxWidth * zoom)
             }
 
-            PromptComposer(draft: $draft, placeholder: "Ask about this step") {
+            PromptComposer(
+                draft: $draft,
+                attachment: $attachment,
+                placeholder: "Ask about this step"
+            ) {
                 sendDraft()
             }
             .frame(maxWidth: AppTheme.composerMaxWidth * zoom)
@@ -130,15 +117,25 @@ struct PracticeSessionView: View {
     }
 
     private func sendDraft() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        messages.append(SessionMessage(role: .student, text: text))
-        draft = ""
-        messages.append(
-            SessionMessage(
-                role: .tutor,
-                text: "Don’t jump to the value yet. Compare the two sides first — do they meet?"
-            )
-        )
+        let submittedDraft = draft
+        let submittedAttachment = attachment
+        Task {
+            if await conversations.send(
+                submittedDraft,
+                attachment: submittedAttachment,
+                in: .practice
+            ) {
+                if draft == submittedDraft {
+                    draft = ""
+                }
+                if attachment?.id == submittedAttachment?.id {
+                    attachment = nil
+                }
+                conversations.appendPreviewTutorReply(
+                    "Don’t jump to the value yet. Compare the two sides first — do they meet?",
+                    in: .practice
+                )
+            }
+        }
     }
 }
