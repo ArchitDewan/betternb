@@ -12,7 +12,7 @@ struct SidebarView: View {
             brandHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16 * zoom) {
+                VStack(alignment: .leading, spacing: 18 * zoom) {
                     VStack(alignment: .leading, spacing: 1) {
                         ForEach(WorkspaceDestination.primary) { destination in
                             SidebarRow(
@@ -66,8 +66,8 @@ struct SidebarView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6 * zoom)
-                .padding(.top, 4 * zoom)
+                .padding(.horizontal, 8 * zoom)
+                .padding(.top, 8 * zoom)
                 .padding(.bottom, 16 * zoom)
             }
             .scrollIndicators(.hidden)
@@ -76,14 +76,19 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppTheme.sidebar)
-        .navigationSplitViewColumnWidth(min: 188, ideal: 216, max: 244)
+        .navigationSplitViewColumnWidth(
+            min: 196 * zoom,
+            ideal: 224 * zoom,
+            max: 252 * zoom
+        )
     }
 
     private var brandHeader: some View {
         HStack(spacing: 8 * zoom) {
             Text("BetterNB")
-                .zFont(13, weight: .semibold, zoom: zoom)
+                .zFont(13, weight: .medium, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
+                .lineLimit(1)
 
             Spacer(minLength: 0)
 
@@ -93,15 +98,14 @@ struct SidebarView: View {
                 Image(systemName: "magnifyingglass")
                     .zFont(12, weight: .medium, zoom: zoom)
                     .foregroundStyle(AppTheme.secondaryText)
-                    .frame(width: 22 * zoom, height: 22 * zoom)
+                    .frame(width: 28 * zoom, height: 28 * zoom)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Search")
         }
-        .padding(.leading, 14 * zoom)
-        .padding(.trailing, 8 * zoom)
-        .padding(.top, 10 * zoom)
-        .padding(.bottom, 8 * zoom)
+        .padding(.horizontal, 14 * zoom)
+        .frame(height: 44 * zoom)
     }
 
     private var accountFooter: some View {
@@ -112,7 +116,7 @@ struct SidebarView: View {
         } label: {
             HStack(spacing: 8 * zoom) {
                 Circle()
-                    .fill(AppTheme.elevatedHover)
+                    .fill(AppTheme.elevated)
                     .frame(width: 20 * zoom, height: 20 * zoom)
                     .overlay {
                         Image(systemName: "person.fill")
@@ -139,8 +143,7 @@ struct SidebarView: View {
             }
         }
         .menuStyle(.borderlessButton)
-        .padding(.leading, 14 * zoom)
-        .padding(.trailing, 8 * zoom)
+        .padding(.horizontal, 14 * zoom)
         .padding(.vertical, 10 * zoom)
         .overlay(alignment: .top) {
             Rectangle()
@@ -184,7 +187,7 @@ private struct CourseDisclosure<Content: View>: View {
                 }
                 .padding(.leading, 8 * zoom)
                 .padding(.trailing, 6 * zoom)
-                .frame(height: 28 * zoom, alignment: .leading)
+                .frame(height: 30 * zoom, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -235,8 +238,11 @@ private struct SidebarRow: View {
             .padding(.leading, (isNested ? 24 : 8) * zoom)
             .padding(.trailing, 8 * zoom)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 28 * zoom)
-            .quietRowBackground(isActive: isSelected || isHovering)
+            .frame(height: 30 * zoom)
+            .background {
+                RoundedRectangle(cornerRadius: 7 * zoom, style: .continuous)
+                    .fill(rowBackground)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -244,5 +250,15 @@ private struct SidebarRow: View {
         .help(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityLabel(title)
+    }
+
+    private var rowBackground: Color {
+        if isSelected {
+            AppTheme.selection
+        } else if isHovering {
+            Color.white.opacity(0.05)
+        } else {
+            .clear
+        }
     }
 }

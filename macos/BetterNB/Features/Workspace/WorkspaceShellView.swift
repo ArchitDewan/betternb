@@ -44,7 +44,7 @@ private struct WorkspacePlaceholderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12 * zoom) {
             Text(destination.title)
-                .zFont(28, weight: .semibold, design: .serif, zoom: zoom)
+                .zFont(28, weight: .semibold, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
 
             Text("This surface is ready for the next design pass.")

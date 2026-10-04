@@ -46,7 +46,7 @@ struct PracticeSessionView: View {
         VStack(alignment: .leading, spacing: 8 * zoom) {
             Text("Problem 4")
                 .zFont(12, weight: .semibold, zoom: zoom)
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text("limₓ→₂ f(x)")
                 .zFont(34, weight: .medium, design: .serif, zoom: zoom)
@@ -65,7 +65,7 @@ struct PracticeSessionView: View {
             if let error = conversations.errorsByChannel[.practice] {
                 Text(error)
                     .zFont(12, zoom: zoom)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.critical)
                     .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
             }
 
@@ -112,6 +112,10 @@ struct PracticeSessionView: View {
                     AppTheme.paper,
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                 )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(AppTheme.stroke, lineWidth: 1)
+                }
         }
         .buttonStyle(.plain)
     }

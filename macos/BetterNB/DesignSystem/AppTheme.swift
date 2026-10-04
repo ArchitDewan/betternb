@@ -1,32 +1,29 @@
 import SwiftUI
 
 enum AppTheme {
-    static let canvas = Color(red: 0.118, green: 0.110, blue: 0.102)
-    static let sidebar = Color(red: 0.090, green: 0.084, blue: 0.078)
-    static let panel = Color(red: 0.108, green: 0.100, blue: 0.094)
-    static let paper = Color(red: 0.155, green: 0.145, blue: 0.132)
-    static let elevated = Color(red: 0.175, green: 0.165, blue: 0.150)
-    static let elevatedHover = Color(red: 0.210, green: 0.198, blue: 0.180)
-    static let stroke = Color.white.opacity(0.07)
-    static let primaryText = Color(red: 0.96, green: 0.94, blue: 0.90)
-    static let secondaryText = Color(red: 0.78, green: 0.74, blue: 0.68)
-    static let tertiaryText = Color(red: 0.55, green: 0.52, blue: 0.47)
-    static let ink = Color(red: 0.93, green: 0.76, blue: 0.42)
-    static let chalk = Color(red: 0.72, green: 0.84, blue: 0.98)
-    static let accent = ink
+    static let canvas = Color(red: 0.067, green: 0.067, blue: 0.067)
+    static let sidebar = Color(red: 0.047, green: 0.047, blue: 0.047)
+    static let panel = Color(red: 0.082, green: 0.082, blue: 0.082)
+    static let paper = Color(red: 0.110, green: 0.110, blue: 0.110)
+    static let elevated = Color(red: 0.137, green: 0.137, blue: 0.137)
+    static let elevatedHover = Color(red: 0.176, green: 0.176, blue: 0.176)
+    static let selection = Color.white.opacity(0.10)
+    static let stroke = Color.white.opacity(0.08)
+    static let strongStroke = Color.white.opacity(0.18)
+    static let primaryText = Color(red: 0.94, green: 0.94, blue: 0.94)
+    static let secondaryText = Color(red: 0.69, green: 0.69, blue: 0.69)
+    static let tertiaryText = Color(red: 0.46, green: 0.46, blue: 0.46)
+    static let inverseText = Color(red: 0.08, green: 0.08, blue: 0.08)
+    static let critical = Color(red: 0.95, green: 0.42, blue: 0.42)
+
+    // Compatibility names for study-specific emphasis. The shell remains monochrome.
+    static let ink = primaryText
+    static let chalk = secondaryText
+    static let accent = primaryText
 
     static let cornerRadius: CGFloat = 16
     static let compactCornerRadius: CGFloat = 10
     static let pagePadding: CGFloat = 28
     static let sidebarInset: CGFloat = 8
     static let composerMaxWidth: CGFloat = 768
-}
-
-extension View {
-    func quietRowBackground(isActive: Bool) -> some View {
-        background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isActive ? Color.white.opacity(0.07) : Color.clear)
-        }
-    }
 }
