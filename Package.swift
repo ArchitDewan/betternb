@@ -16,5 +16,10 @@ let package = Package(
             path: "macos/BetterNB",
             exclude: ["Resources"]
         ),
+        .testTarget(
+            name: "BetterNBTests",
+            dependencies: ["BetterNB"],
+            path: "macos/BetterNBTests"
+        ),
     ]
 )
