@@ -1,0 +1,14 @@
+[
+  {"id": "power-correct", "problem": "Differentiate f(x) = x^2", "step": "f'(x) = 2x", "correct": true},
+  {"id": "power-missing-coefficient", "problem": "Differentiate f(x) = x^2", "step": "f'(x) = x", "correct": false},
+  {"id": "chain-correct", "problem": "Differentiate f(x) = (x^2 + 1)^3", "step": "f'(x) = 6x(x^2 + 1)^2", "correct": true},
+  {"id": "chain-missing-inner", "problem": "Differentiate f(x) = (x^2 + 1)^3", "step": "f'(x) = 3(x^2 + 1)^2", "correct": false},
+  {"id": "polynomial-sum", "problem": "Differentiate f(x) = x^3 + 2x", "step": "f'(x) = 3x^2 + 2", "correct": true},
+  {"id": "polynomial-constant", "problem": "Differentiate f(x) = 3x^4 - 2x + 7", "step": "f'(x) = 12x^3 - 2", "correct": true},
+  {"id": "sine", "problem": "Differentiate f(x) = sin(x)", "step": "f'(x) = cos(x)", "correct": true},
+  {"id": "cosine-sign", "problem": "Differentiate f(x) = cos(x)", "step": "f'(x) = sin(x)", "correct": false},
+  {"id": "exponential", "problem": "Differentiate f(x) = exp(x)", "step": "f'(x) = exp(x)", "correct": true},
+  {"id": "product", "problem": "Differentiate f(x) = x*sin(x)", "step": "f'(x) = sin(x) + x*cos(x)", "correct": true},
+  {"id": "quotient", "problem": "Differentiate f(x) = x/(x+1)", "step": "f'(x) = 1/(x+1)^2", "correct": true},
+  {"id": "logarithm", "problem": "Differentiate f(x) = log(x)", "step": "f'(x) = 1/x", "correct": true}
+]

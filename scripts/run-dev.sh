@@ -8,8 +8,14 @@ api_binary="$repository_root/.build/betternb-api-dev"
 api_log="$repository_root/.build/betternb-api.log"
 app_binary="$repository_root/.build/BetterNB.app/Contents/MacOS/BetterNB"
 api_pid=""
+tutor_log="$repository_root/.build/betternb-tutor.log"
+tutor_pid=""
 
 cleanup() {
+    if [[ -n "$tutor_pid" ]] && kill -0 "$tutor_pid" 2>/dev/null; then
+        kill "$tutor_pid" 2>/dev/null || true
+        wait "$tutor_pid" 2>/dev/null || true
+    fi
     if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
         kill "$api_pid" 2>/dev/null || true
         wait "$api_pid" 2>/dev/null || true
@@ -19,16 +25,9 @@ trap cleanup EXIT INT TERM
 
 cd "$repository_root"
 
-if [[ "${1:-}" == "--local-account" ]]; then
-    export BETTERNB_DEV_AUTH_BYPASS=1
-    echo "Using the local development account. Auth0 and PostgreSQL are not used."
-    ./scripts/build-macos-prototype.sh
-    exec "$app_binary"
-fi
-
 if [[ ! -f "$environment_file" ]]; then
-    echo "Full sign-in needs .env.local. Copy .env.example and set the Auth0 values." >&2
-    echo "This script starts PostgreSQL from compose.yaml. Use --local-account only to skip Auth0." >&2
+    echo "BetterNB needs .env.local. Copy .env.example and set OPENAI_API_KEY." >&2
+    echo "Full sign-in also requires the Auth0 values; --local-account skips Auth0 and PostgreSQL." >&2
     exit 1
 fi
 
@@ -36,6 +35,58 @@ set -a
 # shellcheck disable=SC1090
 source "$environment_file"
 set +a
+
+if [[ -z "${OPENAI_API_KEY:-}" ]] || [[ "$OPENAI_API_KEY" == *YOUR_* ]]; then
+    echo "Set OPENAI_API_KEY in .env.local before running the guided tutor." >&2
+    exit 1
+fi
+
+mkdir -p "$repository_root/.build"
+export BETTERNB_TUTOR_ADDRESS="${BETTERNB_TUTOR_ADDRESS:-127.0.0.1}"
+export BETTERNB_TUTOR_PORT="${BETTERNB_TUTOR_PORT:-8082}"
+export BETTERNB_TUTOR_URL="${BETTERNB_TUTOR_URL:-http://127.0.0.1:8082}"
+export PYTHONPATH="$repository_root/services/tutor/src"
+
+case "$BETTERNB_TUTOR_ADDRESS" in
+    127.0.0.1|localhost|::1) ;;
+    *)
+        echo "F009A requires BETTERNB_TUTOR_ADDRESS to use a loopback address." >&2
+        exit 1
+        ;;
+esac
+
+uv sync --frozen --quiet
+uv run uvicorn --factory betternb_tutor.main:build_app \
+    --host "$BETTERNB_TUTOR_ADDRESS" \
+    --port "$BETTERNB_TUTOR_PORT" >"$tutor_log" 2>&1 &
+tutor_pid=$!
+
+tutor_health_url="${BETTERNB_TUTOR_URL%/}/healthz"
+for _ in {1..200}; do
+    if curl --fail --silent --show-error "$tutor_health_url" >/dev/null 2>&1; then
+        break
+    fi
+    if ! kill -0 "$tutor_pid" 2>/dev/null; then
+        echo "The tutor service failed to start. Log output:" >&2
+        tail -n 40 "$tutor_log" >&2 || true
+        exit 1
+    fi
+    sleep 0.2
+done
+if ! curl --fail --silent --show-error "$tutor_health_url" >/dev/null; then
+    echo "The tutor service did not become ready at $tutor_health_url. Log output:" >&2
+    tail -n 40 "$tutor_log" >&2 || true
+    exit 1
+fi
+
+if [[ "${1:-}" == "--local-account" ]]; then
+    export BETTERNB_DEV_AUTH_BYPASS=1
+    echo "Using the local development account. Auth0 and PostgreSQL are not used."
+    ./scripts/build-macos-prototype.sh
+    env -u OPENAI_API_KEY "$app_binary"
+    exit $?
+fi
+
 unset BETTERNB_DEV_AUTH_BYPASS
 
 required_variables=(
@@ -80,7 +131,6 @@ ensure_postgres
 export BETTERNB_API_ADDRESS="${BETTERNB_API_ADDRESS:-127.0.0.1:8081}"
 export BETTERNB_API_URL="${BETTERNB_API_URL:-http://127.0.0.1:8081}"
 
-mkdir -p "$repository_root/.build"
 go build -o "$api_binary" ./cmd/betternb-api
 "$api_binary" -address "$BETTERNB_API_ADDRESS" -migrate >"$api_log" 2>&1 &
 api_pid=$!
@@ -105,4 +155,4 @@ if ! curl --fail --silent --show-error "$health_url" >/dev/null; then
 fi
 
 ./scripts/build-macos-prototype.sh
-"$app_binary"
+env -u OPENAI_API_KEY "$app_binary"

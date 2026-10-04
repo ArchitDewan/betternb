@@ -15,6 +15,8 @@ enum AppTheme {
     static let tertiaryText = Color(red: 0.46, green: 0.46, blue: 0.46)
     static let inverseText = Color(red: 0.08, green: 0.08, blue: 0.08)
     static let critical = Color(red: 0.95, green: 0.42, blue: 0.42)
+    static let verified = Color(red: 0.42, green: 0.78, blue: 0.56)
+    static let caution = Color(red: 0.93, green: 0.72, blue: 0.34)
 
     // Compatibility names for study-specific emphasis. The shell remains monochrome.
     static let ink = primaryText

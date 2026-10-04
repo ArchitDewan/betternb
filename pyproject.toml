@@ -1,0 +1,26 @@
+[project]
+name = "betternb-tutor"
+version = "0.1.0"
+description = "BetterNB's local guided-math tutor service"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116,<1",
+    "openai>=2.0,<3",
+    "pydantic>=2.11,<3",
+    "python-multipart>=0.0.20,<1",
+    "sympy>=1.14,<2",
+    "uvicorn>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.4,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["services/tutor/tests"]
+pythonpath = ["services/tutor/src"]
+
+[tool.uv]
+package = false

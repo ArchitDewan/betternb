@@ -28,9 +28,16 @@ Current native macOS prototype commands:
 - Inspect the minimum window: `BETTERNB_WINDOW=min .build/BetterNB.app/Contents/MacOS/BetterNB`.
 - Zoom type and spacing: `⌘+` / `⌘=` in, `⌘-` out, `⌘0` reset. Default is 110%.
 
+Current Python tutoring service commands:
+
+- Install/sync: `uv sync`.
+- Test: `uv run pytest`.
+- Run locally: set `OPENAI_API_KEY`, set `PYTHONPATH=services/tutor/src`, then run `uv run uvicorn --factory betternb_tutor.main:build_app --host 127.0.0.1 --port 8082`.
+- The complete development stack remains `./scripts/run-dev.sh`; it starts the tutor service as well as the configured account stack and native app.
+
 The SwiftUI prototype has unit tests for authentication state. Continue to verify visual-only changes by building and inspecting the running app at its default and minimum window sizes.
 
-There is not yet a separate formatter/linter command, Python service, or deployment command. Account migrations run explicitly through `betternb-api -migrate`.
+There is not yet a separate formatter/linter or deployment command. Account migrations run explicitly through `betternb-api -migrate`.
 
 Use `docs/PRODUCT.md` for product scope, `docs/ARCHITECTURE.md` for system boundaries, and `docs/DEVELOPMENT.md` for the feature-session and worktree workflow. Read only the document relevant to the current task.
 
