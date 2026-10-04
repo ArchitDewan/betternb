@@ -44,10 +44,23 @@ struct TutorSource: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+struct TutorConversationTurn: Codable, Equatable, Sendable {
+    let role: String
+    let text: String
+    let kind: String
+}
+
+enum TutorSubmitIntent: Sendable {
+    case automatic
+    case ask
+    case check
+}
+
 struct TutorTurnRequest: Codable, Equatable, Sendable {
     let sessionID: String
     let problem: String
     let attemptSteps: [String]
+    let conversation: [TutorConversationTurn]
     let action: TutorAction
     let hintLevel: Int
     let solutionRevealed: Bool
@@ -56,6 +69,7 @@ struct TutorTurnRequest: Codable, Equatable, Sendable {
         case sessionID = "session_id"
         case problem
         case attemptSteps = "attempt_steps"
+        case conversation
         case action
         case hintLevel = "hint_level"
         case solutionRevealed = "solution_revealed"
@@ -92,18 +106,34 @@ protocol TutorClient: Sendable {
 }
 
 enum TutorTurnKind: Equatable, Sendable {
+    case problem
     case message
+    case step(Int)
     case hint(Int)
     case solution
 
     var caption: String {
         switch self {
+        case .problem:
+            "Problem"
         case .message:
             ""
+        case .step(let number):
+            "Step \(number)"
         case .hint(let level):
             "Hint \(level)"
         case .solution:
             "Solution"
+        }
+    }
+
+    var wireName: String {
+        switch self {
+        case .problem: "problem"
+        case .message: "message"
+        case .step: "step"
+        case .hint: "hint"
+        case .solution: "solution"
         }
     }
 }
@@ -176,6 +206,26 @@ final class TutorSessionStore {
         problem != nil && !solutionRevealed && pendingTranscription == nil
     }
 
+    var usedHintCount: Int {
+        if solutionRevealed { return 3 }
+        guard let nextHintLevel else { return 0 }
+        return max(0, nextHintLevel - 1)
+    }
+
+    var nextGuidance: String? {
+        guard problem != nil, pendingTranscription == nil, !isBusy else { return nil }
+        if solutionRevealed {
+            return "Try a nearby problem, or start a new one."
+        }
+        if entries.last?.assessment == "incorrect" {
+            return "That step didn’t check. Fix it, or take a hint."
+        }
+        if entries.last?.assessment == "correct" {
+            return "Write the next derivative term and check it."
+        }
+        return "Ask a question, or check a written step."
+    }
+
     init(
         client: any TutorClient,
         sessionID: String = UUID().uuidString,
@@ -187,7 +237,11 @@ final class TutorSessionStore {
     }
 
     @discardableResult
-    func submit(_ text: String, attachment: MessageAttachment? = nil) async -> Bool {
+    func submit(
+        _ text: String,
+        attachment: MessageAttachment? = nil,
+        intent: TutorSubmitIntent = .automatic
+    ) async -> Bool {
         guard !isBusy else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || attachment != nil else { return false }
@@ -202,12 +256,25 @@ final class TutorSessionStore {
 
         if problem == nil {
             problem = trimmed
-            return await sendConversation(trimmed, userLabel: trimmed)
+            return await sendConversation(trimmed, userLabel: trimmed, studentKind: .problem)
         }
-        if TutorMessageKind.looksLikeMathStep(trimmed) {
+        switch intent {
+        case .ask:
+            return await sendConversation(trimmed, userLabel: trimmed, studentKind: .message)
+        case .check:
             return await submitStep(trimmed)
+        case .automatic:
+            if TutorMessageKind.looksLikeMathStep(trimmed) {
+                return await submitStep(trimmed)
+            }
+            return await sendConversation(trimmed, userLabel: trimmed, studentKind: .message)
         }
-        return await sendConversation(trimmed, userLabel: trimmed)
+    }
+
+    @discardableResult
+    func beginProblem(_ prompt: String) async -> Bool {
+        reset()
+        return await submit(prompt, intent: .ask)
     }
 
     func updatePendingTranscription(_ text: String) {
@@ -230,11 +297,11 @@ final class TutorSessionStore {
         case .problem:
             problem = combined
             self.pendingTranscription = nil
-            return await sendConversation(combined, userLabel: combined)
+            return await sendConversation(combined, userLabel: combined, studentKind: .problem)
         case .step:
             let didSend = TutorMessageKind.looksLikeMathStep(combined)
                 ? await submitStep(combined)
-                : await sendConversation(combined, userLabel: combined)
+                : await sendConversation(combined, userLabel: combined, studentKind: .message)
             if didSend {
                 self.pendingTranscription = nil
             }
@@ -299,6 +366,7 @@ final class TutorSessionStore {
             sessionID: sessionID,
             problem: problem,
             attemptSteps: proposedSteps,
+            conversation: transcript(),
             action: .checkStep,
             hintLevel: 0,
             solutionRevealed: false
@@ -308,16 +376,18 @@ final class TutorSessionStore {
             userLabel: step,
             proposedSteps: proposedSteps,
             recordStudent: true,
-            recordAttempt: true
+            recordAttempt: true,
+            studentKind: .step(proposedSteps.count)
         )
     }
 
-    private func sendConversation(_ message: String, userLabel: String) async -> Bool {
+    private func sendConversation(_ message: String, userLabel: String, studentKind: TutorTurnKind) async -> Bool {
         guard let problem else { return false }
         let request = TutorTurnRequest(
             sessionID: sessionID,
             problem: problem,
             attemptSteps: message == problem ? [] : [message],
+            conversation: transcript(),
             action: .chat,
             hintLevel: 0,
             solutionRevealed: false
@@ -327,7 +397,8 @@ final class TutorSessionStore {
             userLabel: userLabel,
             proposedSteps: attemptSteps,
             recordStudent: true,
-            recordAttempt: false
+            recordAttempt: false,
+            studentKind: studentKind
         )
     }
 
@@ -337,6 +408,7 @@ final class TutorSessionStore {
             sessionID: sessionID,
             problem: problem,
             attemptSteps: attemptSteps,
+            conversation: transcript(),
             action: action,
             hintLevel: hintLevel,
             solutionRevealed: action == .revealSolution
@@ -346,7 +418,8 @@ final class TutorSessionStore {
             userLabel: "",
             proposedSteps: attemptSteps,
             recordStudent: recordStudent,
-            recordAttempt: false
+            recordAttempt: false,
+            studentKind: .message
         )
     }
 
@@ -355,13 +428,14 @@ final class TutorSessionStore {
         userLabel: String,
         proposedSteps: [String],
         recordStudent: Bool,
-        recordAttempt: Bool
+        recordAttempt: Bool,
+        studentKind: TutorTurnKind
     ) async -> Bool {
         guard !isBusy else { return false }
         isBusy = true
         defer { isBusy = false }
         if recordStudent {
-            entries.append(TutorConversationEntry(role: .student, text: userLabel))
+            entries.append(TutorConversationEntry(role: .student, text: userLabel, kind: studentKind))
         }
         let started = ContinuousClock.now
         do {
@@ -397,6 +471,16 @@ final class TutorSessionStore {
         }
     }
 
+    private func transcript() -> [TutorConversationTurn] {
+        entries.suffix(12).map { entry in
+            TutorConversationTurn(
+                role: entry.role == .student ? "student" : "tutor",
+                text: entry.text,
+                kind: entry.kind.wireName
+            )
+        }
+    }
+
     private func kind(for request: TutorTurnRequest) -> TutorTurnKind {
         switch request.action {
         case .requestHint:
@@ -413,5 +497,37 @@ final class TutorSessionStore {
         if elapsed < minimumResponseDelay {
             try? await Task.sleep(for: minimumResponseDelay - elapsed)
         }
+    }
+}
+
+struct CourseProblem: Identifiable, Equatable, Sendable {
+    let id: UUID
+    var prompt: String
+    var openedInPractice: Bool
+
+    init(id: UUID = UUID(), prompt: String, openedInPractice: Bool = false) {
+        self.id = id
+        self.prompt = prompt
+        self.openedInPractice = openedInPractice
+    }
+}
+
+@MainActor
+@Observable
+final class ProblemSetStore {
+    private(set) var items: [CourseProblem] = []
+
+    @discardableResult
+    func add(_ prompt: String) -> CourseProblem? {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let item = CourseProblem(prompt: trimmed)
+        items.insert(item, at: 0)
+        return item
+    }
+
+    func markOpened(_ id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].openedInPractice = true
     }
 }

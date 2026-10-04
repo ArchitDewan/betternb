@@ -38,6 +38,8 @@ F009A is accepted when the native Practice surface completes that loop against a
 - [x] 2026-10-04: Fix jammed prose, conversational turns, thinking state, and Command-V image paste.
 - [x] 2026-10-04: Remove duplicate problem header and citation stack; match Practice to channel chat chrome; fix aligned/display spacing.
 - [x] 2026-10-04: Give revealed solutions room: operator/function spacing, break long display math at `=` and `+`/`-`, wrap display instead of a tight HStack, and ask the model for one equation per step.
+- [x] 2026-10-04: Snapshot commit `075ea51` before the notebook pass.
+- [x] 2026-10-04: Turn Practice into a notebook: problem rail, Ask/Check, live draft preview, hint ladder, conversation history, and a Problems set that opens Practice.
 
 ## Decisions and discoveries
 
@@ -55,8 +57,8 @@ F009A is accepted when the native Practice surface completes that loop against a
 
 ## Validation
 
-- `uv run pytest -q`: 29 passed; one non-failing Starlette `TestClient` deprecation warning.
-- `swift test`: 40 passed.
+- `uv run pytest -q`: 30 passed; one non-failing Starlette `TestClient` deprecation warning.
+- `swift test`: 42 passed.
 - `swift build`: passed.
 - `./scripts/build-macos-prototype.sh`: passed; wrote `.build/BetterNB.app`.
 - `go test ./...`: passed.

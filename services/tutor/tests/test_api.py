@@ -66,6 +66,27 @@ def test_health_and_tutor_turn_contract() -> None:
     assert response.json()["sources"][0]["source_id"] == "calc.derivatives.power-rule"
 
 
+def test_conversation_history_is_accepted() -> None:
+    response = client().post(
+        "/v1/tutor/turns",
+        json={
+            "session_id": "session-1",
+            "problem": "Differentiate f(x) = x^2",
+            "attempt_steps": [],
+            "conversation": [
+                {"role": "student", "kind": "problem", "text": "Differentiate f(x) = x^2"},
+                {"role": "tutor", "kind": "message", "text": "Start with the first term."},
+            ],
+            "action": "chat",
+            "hint_level": 0,
+            "solution_revealed": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["assessment"] == "not_assessed"
+
+
 def test_chat_turn_is_accepted_without_a_step() -> None:
     response = client().post(
         "/v1/tutor/turns",

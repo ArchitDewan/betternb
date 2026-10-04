@@ -59,6 +59,10 @@ class OpenAIModelGateway:
                 {
                     "problem": request.problem,
                     "attempt_steps": request.attempt_steps,
+                    "conversation": [
+                        {"role": turn.role, "kind": turn.kind, "text": turn.text}
+                        for turn in request.conversation
+                    ],
                     "requested_action": request.action.value,
                     "hint_level": request.hint_level,
                     "verification": {
@@ -150,7 +154,8 @@ def _instructions_for(action: TutorAction) -> str:
             shared
             + " This turn is conversation, not a calculation to grade. The solver was not used. "
             "Answer the student's message helpfully: confirm the problem if they stated one, "
-            "coach the next written step if they described a plan, and ask a short question that keeps them working. "
+            "Use the conversation history. Coach the next written step if they described a plan, "
+            "and ask a short question that keeps them working. "
             "Do not solve the problem and do not invent a verification result. Put spaces between ordinary words."
         )
     if action is TutorAction.CHECK_STEP:

@@ -16,12 +16,21 @@ class VerificationStatus(StrEnum):
     INCONCLUSIVE = "inconclusive"
 
 
+class ConversationTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str = Field(min_length=1, max_length=16)
+    text: str = Field(min_length=1, max_length=20_000)
+    kind: str = "message"
+
+
 class TutorTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str = Field(min_length=1, max_length=128)
     problem: str = Field(min_length=1, max_length=20_000)
     attempt_steps: list[str] = Field(default_factory=list, max_length=100)
+    conversation: list[ConversationTurn] = Field(default_factory=list, max_length=24)
     action: TutorAction
     hint_level: int = Field(default=0, ge=0, le=3)
     solution_revealed: bool = False

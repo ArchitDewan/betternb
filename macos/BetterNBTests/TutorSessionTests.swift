@@ -37,7 +37,9 @@ private actor RecordingTutorClient: TutorClient {
 struct TutorSessionTests {
     @Test
     func tutorTurnsLabelHintsAndRevealedSolutions() {
+        #expect(TutorTurnKind.problem.caption == "Problem")
         #expect(TutorTurnKind.message.caption.isEmpty)
+        #expect(TutorTurnKind.step(1).caption == "Step 1")
         #expect(TutorTurnKind.hint(2).caption == "Hint 2")
         #expect(TutorTurnKind.solution.caption == "Solution")
     }
@@ -148,7 +150,7 @@ struct TutorSessionTests {
         #expect(!store.canRevealSolution)
         #expect(await !store.revealSolution())
         #expect(store.entries.map(\.role) == [.student, .tutor, .student, .tutor, .tutor, .tutor])
-        #expect(store.entries.map(\.kind) == [.message, .message, .message, .message, .hint(1), .solution])
+        #expect(store.entries.map(\.kind) == [.problem, .message, .step(1), .message, .hint(1), .solution])
     }
 
     @Test @MainActor
@@ -163,6 +165,34 @@ struct TutorSessionTests {
         #expect(store.entries.contains { $0.role == .student && $0.text == "f'(x) = 2*x" })
         #expect(store.entries.last?.role == .student)
         #expect(store.errorMessage == "The tutor couldn’t respond. Your work is still here.")
+    }
+
+    @Test @MainActor
+    func askIntentStaysConversationAndCheckIntentForcesAStep() async {
+        let client = RecordingTutorClient()
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit("Differentiate f(x) = x^2"))
+        #expect(await store.submit("f'(x) = 2x", intent: .ask))
+        #expect(await store.submit("I rewrote the first term", intent: .check))
+
+        let requests = await client.recordedRequests()
+        #expect(requests.map(\.action) == [.chat, .chat, .checkStep])
+        #expect(!requests[1].conversation.isEmpty)
+        #expect(store.entries.map(\.kind) == [.problem, .message, .message, .message, .step(1), .message])
+    }
+
+    @Test @MainActor
+    func problemSetOpensInPracticeAsTheCurrentProblem() async {
+        let client = RecordingTutorClient()
+        let tutor = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        let problems = ProblemSetStore()
+        let added = problems.add("Differentiate f(x) = x^2")
+        #expect(added?.prompt == "Differentiate f(x) = x^2")
+        #expect(await tutor.beginProblem(added!.prompt))
+        problems.markOpened(added!.id)
+        #expect(tutor.problem == "Differentiate f(x) = x^2")
+        #expect(tutor.entries.first?.kind == .problem)
+        #expect(problems.items.first?.openedInPractice == true)
     }
 }
 

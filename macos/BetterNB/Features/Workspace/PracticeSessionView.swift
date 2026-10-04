@@ -6,9 +6,14 @@ struct PracticeSessionView: View {
     @Environment(\.workspaceZoom) private var zoom
     @State private var draft = ""
     @State private var attachment: MessageAttachment?
+    @State private var intent: TutorSubmitIntent = .automatic
 
     var body: some View {
         VStack(spacing: 0) {
+            if tutor.problem != nil, tutor.pendingTranscription == nil {
+                workingRail
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28 * zoom) {
@@ -70,59 +75,172 @@ struct PracticeSessionView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 5 * zoom) {
-            Text("Start a conversation about practice.")
+        VStack(alignment: .leading, spacing: 14 * zoom) {
+            Text("Work a derivative like a notebook.")
                 .zFont(15, weight: .medium, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
-            Text("Ask for help, paste a problem image, or write the next derivative. Questions stay connected to this part of Calculus I.")
+            VStack(alignment: .leading, spacing: 8 * zoom) {
+                emptyStep("1", "Paste the problem, or add it from Problems.")
+                emptyStep("2", "Write one step, then send it as Check.")
+                emptyStep("3", "Hints stay on a ladder. Reveal only if you ask.")
+            }
+            Text("The tutor remembers this thread, checks written derivatives with SymPy, and keeps English out of the math.")
                 .zFont(13, zoom: zoom)
                 .foregroundStyle(AppTheme.tertiaryText)
         }
     }
 
+    private func emptyStep(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10 * zoom) {
+            Text(number)
+                .zFont(12, weight: .semibold, zoom: zoom)
+                .foregroundStyle(AppTheme.tertiaryText)
+                .frame(width: 16 * zoom, alignment: .leading)
+            Text(text)
+                .zFont(13, zoom: zoom)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
+    private var workingRail: some View {
+        HStack(alignment: .center, spacing: 12 * zoom) {
+            VStack(alignment: .leading, spacing: 3 * zoom) {
+                Text("Working on")
+                    .zFont(11, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
+                Text(tutor.problem ?? "")
+                    .zFont(13, zoom: zoom)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8 * zoom)
+            Button("New problem") {
+                tutor.reset()
+                draft = ""
+                attachment = nil
+                intent = .automatic
+            }
+            .buttonStyle(.plain)
+            .zFont(12, weight: .medium, zoom: zoom)
+            .foregroundStyle(AppTheme.secondaryText)
+            .disabled(tutor.isBusy)
+        }
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .padding(.vertical, 10 * zoom)
+        .background(AppTheme.panel)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+    }
+
     private var composer: some View {
-        VStack(spacing: 8 * zoom) {
+        VStack(alignment: .leading, spacing: 10 * zoom) {
             if let error = tutor.errorMessage {
                 Text(error)
                     .zFont(12, zoom: zoom)
                     .foregroundStyle(AppTheme.critical)
-                    .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
+            }
+
+            if let guidance = tutor.nextGuidance {
+                Text(guidance)
+                    .zFont(12, zoom: zoom)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             if tutor.problem != nil, tutor.pendingTranscription == nil {
                 helpControls
-                    .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
+                intentPicker
+            }
+
+            if showsDraftPreview {
+                TutorMathText(source: draft, fontSize: 15 * zoom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12 * zoom)
+                    .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous)
+                            .stroke(AppTheme.stroke, lineWidth: 1)
+                    }
+                    .accessibilityLabel("Draft math preview")
             }
 
             PromptComposer(
                 draft: $draft,
                 attachment: $attachment,
-                placeholder: "Message Practice",
+                placeholder: composerPlaceholder,
                 allowedContentTypes: [.png, .jpeg],
                 attachmentDescription: "a PNG or JPEG image"
             ) {
                 sendDraft()
             }
-            .frame(maxWidth: AppTheme.composerMaxWidth * zoom)
             .disabled(tutor.pendingTranscription != nil)
             .opacity(tutor.pendingTranscription == nil ? 1 : 0.55)
             .allowsHitTesting(!tutor.isBusy)
         }
+        .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, AppTheme.pagePadding * zoom)
         .padding(.top, 10 * zoom)
         .padding(.bottom, 20 * zoom)
     }
 
-    private var helpControls: some View {
+    private var composerPlaceholder: String {
+        if tutor.problem == nil {
+            return "Paste a derivative problem"
+        }
+        return resolvedIntent == .check ? "Write the next step to check" : "Ask about this problem"
+    }
+
+    private var showsDraftPreview: Bool {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.contains("\\") || trimmed.contains("^") || TutorMessageKind.looksLikeMathStep(trimmed)
+    }
+
+    private var resolvedIntent: TutorSubmitIntent {
+        if tutor.problem == nil { return .ask }
+        if intent != .automatic { return intent }
+        return TutorMessageKind.looksLikeMathStep(draft) ? .check : .ask
+    }
+
+    private var intentPicker: some View {
         HStack(spacing: 8 * zoom) {
-            if let hintLevel = tutor.nextHintLevel {
+            intentChip("Ask", selected: resolvedIntent == .ask) { intent = .ask }
+            intentChip("Check step", selected: resolvedIntent == .check) { intent = .check }
+        }
+        .disabled(tutor.isBusy)
+    }
+
+    private func intentChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .zFont(12, weight: .medium, zoom: zoom)
+                .foregroundStyle(selected ? AppTheme.primaryText : AppTheme.tertiaryText)
+                .padding(.horizontal, 10 * zoom)
+                .padding(.vertical, 5 * zoom)
+                .background(selected ? AppTheme.elevated : Color.clear, in: Capsule())
+                .overlay {
+                    Capsule().stroke(selected ? AppTheme.strongStroke : AppTheme.stroke, lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var helpControls: some View {
+        HStack(spacing: 10 * zoom) {
+            ForEach(1...3, id: \.self) { level in
+                let used = tutor.usedHintCount >= level
+                let current = tutor.nextHintLevel == level
                 Button {
+                    guard current else { return }
                     Task { _ = await tutor.requestHint() }
                 } label: {
-                    Text("Hint \(hintLevel)")
+                    Text("Hint \(level)")
+                        .underline(current)
+                        .foregroundStyle(used || current ? AppTheme.primaryText : AppTheme.tertiaryText)
                 }
-                .help("Request the next hint level")
+                .disabled(!current || tutor.isBusy)
+                .help(current ? "Request hint \(level)" : used ? "Hint \(level) already shown" : "Hints unlock in order")
             }
 
             if tutor.canRevealSolution {
@@ -133,15 +251,6 @@ struct PracticeSessionView: View {
                 }
                 .help("Explicitly request the complete solution")
             }
-
-            Spacer(minLength: 0)
-
-            Button("New problem") {
-                tutor.reset()
-                draft = ""
-                attachment = nil
-            }
-            .help("Clears the current in-memory practice session")
         }
         .buttonStyle(.plain)
         .zFont(12, weight: .medium, zoom: zoom)
@@ -221,10 +330,11 @@ struct PracticeSessionView: View {
     private func sendDraft() {
         let submittedDraft = draft
         let submittedAttachment = attachment
+        let submittedIntent = resolvedIntent
         draft = ""
         attachment = nil
         Task {
-            if await !tutor.submit(submittedDraft, attachment: submittedAttachment) {
+            if await !tutor.submit(submittedDraft, attachment: submittedAttachment, intent: submittedIntent) {
                 if draft.isEmpty { draft = submittedDraft }
                 if attachment == nil { attachment = submittedAttachment }
             }
@@ -304,7 +414,7 @@ private struct TutorConversationBubble: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 6 * zoom) {
-            if entry.role == .tutor, !entry.kind.caption.isEmpty {
+            if !entry.kind.caption.isEmpty {
                 Text(entry.kind.caption)
                     .zFont(11, weight: .semibold, zoom: zoom)
                     .foregroundStyle(AppTheme.secondaryText)
@@ -332,13 +442,17 @@ private struct TutorConversationBubble: View {
 
     private var accessibilitySpeaker: String {
         switch (entry.role, entry.kind) {
+        case (.student, .problem):
+            "You, Problem"
+        case (.student, .step(let number)):
+            "You, Step \(number)"
         case (.student, _):
             "You"
         case (.tutor, .hint(let level)):
             "Tutor, Hint \(level)"
         case (.tutor, .solution):
             "Tutor, Solution"
-        case (.tutor, .message):
+        case (.tutor, .problem), (.tutor, .step), (.tutor, .message):
             "Tutor"
         }
     }
