@@ -6,20 +6,24 @@ struct WorkspaceTopBar: View {
 
     var body: some View {
         HStack(spacing: 8 * zoom) {
-            Text("Calculus I")
-                .foregroundStyle(AppTheme.secondaryText)
-            Image(systemName: "chevron.right")
-                .zFont(11, weight: .bold, zoom: zoom)
-                .foregroundStyle(AppTheme.tertiaryText)
             Text(barTitle)
                 .foregroundStyle(AppTheme.primaryText)
 
+            Text("Calculus I")
+                .zFont(12, zoom: zoom)
+                .foregroundStyle(AppTheme.tertiaryText)
+
             Spacer(minLength: 12 * zoom)
         }
-        .zFont(15, zoom: zoom)
+        .zFont(13, weight: .medium, zoom: zoom)
         .padding(.horizontal, 20 * zoom)
         .frame(height: 44 * zoom)
         .background(AppTheme.canvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.stroke)
+                .frame(height: 1)
+        }
     }
 
     private var barTitle: String {

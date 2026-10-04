@@ -31,7 +31,7 @@ struct AuthenticationGateView: View {
                         .foregroundStyle(AppTheme.secondaryText)
 
                     Text("Your study workspace,\nready when you are.")
-                        .zFont(34, weight: .semibold, design: .serif, zoom: zoom)
+                        .zFont(34, weight: .semibold, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
 
                     Text("Sign in with Apple, Google, or an email code to continue.")
@@ -42,7 +42,7 @@ struct AuthenticationGateView: View {
                 if let errorMessage = session.errorMessage {
                     Text(errorMessage)
                         .zFont(13, zoom: zoom)
-                        .foregroundStyle(Color.red.opacity(0.9))
+                        .foregroundStyle(AppTheme.critical)
                         .accessibilityLabel("Sign-in error: \(errorMessage)")
                 }
 
@@ -58,8 +58,13 @@ struct AuthenticationGateView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 42 * zoom)
+                    .foregroundStyle(AppTheme.inverseText)
+                    .background(
+                        AppTheme.primaryText,
+                        in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous)
+                    )
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
                 .disabled(isBusy)
                 .accessibilityHint("Opens secure sign-in in the system browser")
             }

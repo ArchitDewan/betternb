@@ -13,8 +13,6 @@ struct ChannelConversationView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20 * zoom) {
-                        header
-
                         if conversations.messages(in: destination).isEmpty {
                             emptyState
                         } else {
@@ -26,8 +24,8 @@ struct ChannelConversationView: View {
                     }
                     .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
                     .padding(.horizontal, AppTheme.pagePadding * zoom)
-                    .padding(.top, 22 * zoom)
-                    .padding(.bottom, 28 * zoom)
+                    .padding(.top, 26 * zoom)
+                    .padding(.bottom, 34 * zoom)
                     .frame(maxWidth: .infinity)
                 }
                 .scrollIndicators(.hidden)
@@ -44,7 +42,7 @@ struct ChannelConversationView: View {
                 if let error = conversations.errorsByChannel[destination] {
                     Text(error)
                         .zFont(12, zoom: zoom)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppTheme.critical)
                         .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
                 }
 
@@ -59,8 +57,8 @@ struct ChannelConversationView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppTheme.pagePadding * zoom)
-            .padding(.top, 8 * zoom)
-            .padding(.bottom, 22 * zoom)
+            .padding(.top, 10 * zoom)
+            .padding(.bottom, 20 * zoom)
         }
         .background(AppTheme.canvas)
         .task(id: destination) {
@@ -68,23 +66,15 @@ struct ChannelConversationView: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6 * zoom) {
-            Text(destination.title)
-                .zFont(28, weight: .semibold, design: .serif, zoom: zoom)
-                .foregroundStyle(AppTheme.primaryText)
-
-            Text("Keep questions and ideas connected to this part of Calculus I.")
-                .zFont(17, zoom: zoom)
-                .foregroundStyle(AppTheme.secondaryText)
-        }
-    }
-
     private var emptyState: some View {
-        Text("Start a conversation about \(destination.title.lowercased()).")
-            .zFont(17, zoom: zoom)
-            .foregroundStyle(AppTheme.tertiaryText)
-            .padding(.top, 8 * zoom)
+        VStack(alignment: .leading, spacing: 5 * zoom) {
+            Text("Start a conversation about \(destination.title.lowercased()).")
+                .zFont(15, weight: .medium, zoom: zoom)
+                .foregroundStyle(AppTheme.secondaryText)
+            Text("Questions and files stay connected to this part of Calculus I.")
+                .zFont(13, zoom: zoom)
+                .foregroundStyle(AppTheme.tertiaryText)
+        }
     }
 
     private func sendDraft() {
@@ -116,9 +106,9 @@ struct ChannelMessageBubble: View {
             VStack(alignment: .leading, spacing: 8 * zoom) {
                 if !message.text.isEmpty {
                     Text(message.text)
-                        .zFont(17, zoom: zoom)
+                        .zFont(15, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
-                        .lineSpacing(4)
+                        .lineSpacing(3)
                 }
 
                 if let attachment = message.attachment {
@@ -128,10 +118,16 @@ struct ChannelMessageBubble: View {
                 .padding(message.role == .student ? 12 * zoom : 0)
                 .background(
                     message.role == .student ? AppTheme.paper : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
+                .overlay {
+                    if message.role == .student {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(AppTheme.stroke, lineWidth: 1)
+                    }
+                }
                 .frame(
-                    maxWidth: 520 * zoom,
+                    maxWidth: 560 * zoom,
                     alignment: message.role == .student ? .trailing : .leading
                 )
         }
@@ -171,7 +167,7 @@ private struct MessageAttachmentView: View {
 
             HStack(spacing: 7 * zoom) {
                 Image(systemName: attachment.mediaType == "application/pdf" ? "doc.richtext" : "photo")
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(attachment.filename)

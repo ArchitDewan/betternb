@@ -26,7 +26,7 @@ struct CourseWorkspaceView: View {
         VStack(alignment: .leading, spacing: 6 * zoom) {
             HStack(spacing: 8 * zoom) {
                 Text("Calculus I")
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(AppTheme.secondaryText)
                 Text("·")
                     .foregroundStyle(AppTheme.tertiaryText)
                 Text("Week 4")
@@ -35,7 +35,7 @@ struct CourseWorkspaceView: View {
             .zFont(15, weight: .semibold, zoom: zoom)
 
             Text("Limits & Continuity")
-                .zFont(28, weight: .semibold, design: .serif, zoom: zoom)
+                .zFont(28, weight: .semibold, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
         }
     }
@@ -56,7 +56,7 @@ struct CourseWorkspaceView: View {
             }
 
             Text("You stopped at the graph. Next: check the left- and right-hand values before deciding the limit exists.")
-                .zFont(20, zoom: zoom)
+                .zFont(17, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -65,11 +65,11 @@ struct CourseWorkspaceView: View {
                     selection = .practice
                 } label: {
                     Text("Continue")
-                        .zFont(17, weight: .semibold, zoom: zoom)
-                        .foregroundStyle(AppTheme.canvas)
+                        .zFont(15, weight: .semibold, zoom: zoom)
+                        .foregroundStyle(AppTheme.inverseText)
                         .padding(.horizontal, 16 * zoom)
                         .frame(height: 36 * zoom)
-                        .background(AppTheme.ink, in: Capsule())
+                        .background(AppTheme.primaryText, in: RoundedRectangle(cornerRadius: 9 * zoom, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .help("Open the current practice session")
@@ -82,13 +82,17 @@ struct CourseWorkspaceView: View {
         .padding(22 * zoom)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
+                .stroke(AppTheme.stroke, lineWidth: 1)
+        }
     }
 
     private var problemCopy: some View {
         VStack(alignment: .leading, spacing: 8 * zoom) {
             Text("Problem 4")
                 .zFont(12, weight: .semibold, zoom: zoom)
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text("limₓ→₂ f(x)")
                 .zFont(52, weight: .medium, design: .serif, zoom: zoom)
