@@ -26,7 +26,7 @@ Current native macOS prototype commands:
 - Build: `swift build`.
 - Build an inspectable app bundle: `./scripts/build-macos-prototype.sh`.
 - Inspect the minimum window: `BETTERNB_WINDOW=min .build/BetterNB.app/Contents/MacOS/BetterNB`.
-- Zoom type and spacing: `⌘+` / `⌘=` in, `⌘-` out, `⌘0` reset. Default is 110%.
+- Zoom type and spacing: `⌘+` / `⌘=` in, `⌘-` out, `⌘0` reset. Default is 100%. Sidebar and the Practice inspector do not scale with zoom.
 
 Current Python tutoring service commands:
 

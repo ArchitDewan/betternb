@@ -2,13 +2,10 @@ import SwiftUI
 
 enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     case home
-    case search
     case review
-    case overview
-    case materials
-    case notes
+    case study
+    case library
     case problems
-    case practice
     case flashcards
     case formulaSheet
     case canvas
@@ -18,13 +15,10 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .home: "Home"
-        case .search: "Search"
         case .review: "Review"
-        case .overview: "Overview"
-        case .materials: "Materials"
-        case .notes: "Notes"
+        case .study: "Study"
+        case .library: "Library"
         case .problems: "Problems"
-        case .practice: "Practice"
         case .flashcards: "Flashcards"
         case .formulaSheet: "Formula Sheet"
         case .canvas: "Canvas"
@@ -34,38 +28,89 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .home: "house"
-        case .search: "magnifyingglass"
         case .review: "clock.arrow.circlepath"
-        case .overview: "square.grid.2x2"
-        case .materials: "books.vertical"
-        case .notes: "note.text"
+        case .study: "sparkles"
+        case .library: "books.vertical"
         case .problems: "function"
-        case .practice: "target"
         case .flashcards: "rectangle.on.rectangle"
         case .formulaSheet: "sum"
         case .canvas: "square.and.pencil"
         }
     }
 
-    static let primary: [WorkspaceDestination] = [.home, .search, .review]
+    static let primary: [WorkspaceDestination] = [.home, .review]
     static let courseTools: [WorkspaceDestination] = [
-        .overview,
-        .materials,
-        .notes,
+        .study,
         .problems,
-        .practice,
+    ]
+    static let studyTools: [WorkspaceDestination] = [
         .flashcards,
         .formulaSheet,
         .canvas,
     ]
 
     var acceptsMessages: Bool {
-        switch self {
-        case .materials, .notes, .problems, .practice, .flashcards, .formulaSheet, .canvas:
-            true
-        case .home, .search, .review, .overview:
-            false
+        self == .study
+    }
+}
+
+enum StudyRoute: Equatable, Sendable {
+    case desk
+    case conversation
+    case worksheet
+}
+
+enum StudyDeskInputProposal: Equatable, Sendable {
+    case askCourse
+    case startProblem
+    case choose
+}
+
+enum StudyDeskInputRouter {
+    static func route(
+        for text: String,
+        attachment: MessageAttachment? = nil
+    ) -> StudyDeskInputProposal? {
+        switch proposal(for: text, attachment: attachment) {
+        case .startProblem:
+            return .startProblem
+        case .askCourse, .choose:
+            return .askCourse
+        case nil:
+            return nil
         }
+    }
+
+    static func proposal(
+        for text: String,
+        attachment: MessageAttachment? = nil
+    ) -> StudyDeskInputProposal? {
+        if attachment != nil {
+            return .startProblem
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let lowered = trimmed.lowercased()
+        let problemPrefixes = [
+            "calculate ", "determine ", "differentiate ", "evaluate ", "find ",
+            "integrate ", "prove ", "simplify ", "solve ",
+        ]
+        if problemPrefixes.contains(where: lowered.hasPrefix)
+            || TutorMessageKind.looksLikeMathStep(trimmed) {
+            return .startProblem
+        }
+
+        let questionPrefixes = [
+            "can ", "could ", "explain ", "help ", "how ", "what ", "when ",
+            "where ", "which ", "why ", "would ",
+        ]
+        if trimmed.contains("?") || questionPrefixes.contains(where: lowered.hasPrefix) {
+            return .askCourse
+        }
+
+        return .choose
     }
 }
 
@@ -81,7 +126,7 @@ enum WorkspaceLayout {
 }
 
 enum WorkspaceZoom {
-    static let comfortable: CGFloat = 1.1
+    static let comfortable: CGFloat = 1.0
     static let minimum: CGFloat = 1.0
     static let maximum: CGFloat = 1.8
     static let step: CGFloat = 0.1
@@ -99,10 +144,10 @@ struct StudyTool: Identifiable, Equatable {
     let destination: WorkspaceDestination
 
     static let calculusTools: [StudyTool] = [
-        StudyTool(id: "notes", title: "Lecture notes", detail: "Section 2.3", destination: .notes),
+        StudyTool(id: "notes", title: "Lecture notes", detail: "Section 2.3", destination: .library),
         StudyTool(id: "problems", title: "Problem set 3", detail: "6 of 12", destination: .problems),
         StudyTool(id: "flashcards", title: "Core definitions", detail: "3 due", destination: .flashcards),
-        StudyTool(id: "practice", title: "Quick check", detail: "8 min", destination: .practice),
+        StudyTool(id: "practice", title: "Quick check", detail: "8 min", destination: .study),
     ]
 }
 
@@ -117,19 +162,19 @@ struct RecentStudyItem: Identifiable, Equatable {
             id: "limit-laws",
             title: "Limit laws and direct substitution",
             context: "Notes",
-            destination: .notes
+            destination: .library
         ),
         RecentStudyItem(
             id: "one-sided-limits",
             title: "One-sided limits from a graph",
             context: "Practice",
-            destination: .practice
+            destination: .study
         ),
         RecentStudyItem(
             id: "continuity-check",
             title: "Continuity checkpoint",
             context: "Quiz",
-            destination: .practice
+            destination: .study
         ),
     ]
 }
@@ -144,23 +189,19 @@ struct SessionMessage: Identifiable, Equatable, Sendable {
     let role: Role
     let text: String
     let attachment: MessageAttachment?
+    let sources: [TutorSource]
 
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
-        attachment: MessageAttachment? = nil
+        attachment: MessageAttachment? = nil,
+        sources: [TutorSource] = []
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.attachment = attachment
+        self.sources = sources
     }
-
-    static let opening: [SessionMessage] = [
-        SessionMessage(
-            role: .tutor,
-            text: "You’ve got the graph. I won’t name the limit. What do the left- and right-hand values look like?"
-        ),
-    ]
 }

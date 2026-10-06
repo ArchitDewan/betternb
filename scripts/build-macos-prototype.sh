@@ -15,5 +15,6 @@ mkdir -p "$app_directory/Contents/Resources"
 
 cp "$binary_directory/BetterNB" "$app_directory/Contents/MacOS/BetterNB"
 cp "$repository_root/macos/BetterNB/Resources/Info.plist" "$app_directory/Contents/Info.plist"
+cp "$repository_root/macos/BetterNB/Resources/Lemma.icns" "$app_directory/Contents/Resources/Lemma.icns"
 
 echo "$app_directory"

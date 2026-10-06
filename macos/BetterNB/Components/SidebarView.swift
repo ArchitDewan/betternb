@@ -2,10 +2,11 @@ import SwiftUI
 
 struct SidebarView: View {
     @Binding var selection: WorkspaceDestination
-    @Environment(\.workspaceZoom) private var zoom
     @EnvironmentObject private var authentication: AuthenticationSession
     @State private var calculusExpanded = true
     @State private var linearAlgebraExpanded = false
+    @State private var studyToolsExpanded = false
+    private let zoom: CGFloat = 1
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -18,8 +19,7 @@ struct SidebarView: View {
                             SidebarRow(
                                 title: destination.title,
                                 systemImage: destination.systemImage,
-                                isSelected: selection == destination,
-                                badge: destination == .review ? "3" : nil
+                                isSelected: selection == destination
                             ) {
                                 selection = destination
                             }
@@ -44,9 +44,30 @@ struct SidebarView: View {
                                         title: destination.title,
                                         systemImage: destination.systemImage,
                                         isSelected: selection == destination,
-                                        isNested: true
+                                        indentationLevel: 1
                                     ) {
                                         selection = destination
+                                    }
+                                }
+
+                                CourseDisclosure(
+                                    title: "Study tools",
+                                    detail: "Generated from your work",
+                                    systemImage: "square.grid.2x2",
+                                    indentationLevel: 1,
+                                    isExpanded: $studyToolsExpanded
+                                ) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        ForEach(WorkspaceDestination.studyTools) { destination in
+                                            SidebarRow(
+                                                title: destination.title,
+                                                systemImage: destination.systemImage,
+                                                isSelected: selection == destination,
+                                                indentationLevel: 2
+                                            ) {
+                                                selection = destination
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -76,33 +97,18 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppTheme.sidebar)
-        .navigationSplitViewColumnWidth(
-            min: 196 * zoom,
-            ideal: 224 * zoom,
-            max: 252 * zoom
-        )
+        .environment(\.workspaceZoom, 1)
+        .navigationSplitViewColumnWidth(min: 208, ideal: 220, max: 240)
     }
 
     private var brandHeader: some View {
         HStack(spacing: 8 * zoom) {
-            Text("BetterNB")
+            Text("Lemma")
                 .zFont(13, weight: .medium, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
-
-            Button {
-                selection = .search
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .zFont(12, weight: .medium, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-                    .frame(width: 28 * zoom, height: 28 * zoom)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Search")
         }
         .padding(.horizontal, 14 * zoom)
         .frame(height: 44 * zoom)
@@ -125,7 +131,7 @@ struct SidebarView: View {
                     }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("BetterNB account")
+                    Text("Lemma account")
                         .zFont(12, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
                         .lineLimit(1)
@@ -156,6 +162,8 @@ struct SidebarView: View {
 private struct CourseDisclosure<Content: View>: View {
     let title: String
     let detail: String
+    var systemImage = "folder"
+    var indentationLevel = 0
     @Binding var isExpanded: Bool
     @Environment(\.workspaceZoom) private var zoom
     @ViewBuilder let content: Content
@@ -168,7 +176,7 @@ private struct CourseDisclosure<Content: View>: View {
                 }
             } label: {
                 HStack(spacing: 8 * zoom) {
-                    Image(systemName: "folder")
+                    Image(systemName: systemImage)
                         .zFont(12, zoom: zoom)
                         .foregroundStyle(AppTheme.secondaryText)
                         .frame(width: 16 * zoom, alignment: .leading)
@@ -185,7 +193,7 @@ private struct CourseDisclosure<Content: View>: View {
                         .foregroundStyle(AppTheme.tertiaryText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-                .padding(.leading, 8 * zoom)
+                .padding(.leading, CGFloat(8 + 16 * indentationLevel) * zoom)
                 .padding(.trailing, 6 * zoom)
                 .frame(height: 30 * zoom, alignment: .leading)
                 .contentShape(Rectangle())
@@ -205,7 +213,7 @@ private struct SidebarRow: View {
     let title: String
     var systemImage: String?
     let isSelected: Bool
-    var isNested = false
+    var indentationLevel = 0
     var badge: String?
     let action: () -> Void
 
@@ -235,7 +243,7 @@ private struct SidebarRow: View {
                         .foregroundStyle(AppTheme.tertiaryText)
                 }
             }
-            .padding(.leading, (isNested ? 24 : 8) * zoom)
+            .padding(.leading, CGFloat(8 + 16 * indentationLevel) * zoom)
             .padding(.trailing, 8 * zoom)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 30 * zoom)

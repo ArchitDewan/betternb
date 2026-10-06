@@ -26,7 +26,7 @@ struct AuthenticationGateView: View {
 
             VStack(alignment: .leading, spacing: 22 * zoom) {
                 VStack(alignment: .leading, spacing: 8 * zoom) {
-                    Text("BetterNB")
+                    Text("Lemma")
                         .zFont(14, weight: .semibold, zoom: zoom)
                         .foregroundStyle(AppTheme.secondaryText)
 

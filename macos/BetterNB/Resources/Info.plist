@@ -11,7 +11,11 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>BetterNB</string>
+    <string>Lemma</string>
+    <key>CFBundleDisplayName</key>
+    <string>Lemma</string>
+    <key>CFBundleIconFile</key>
+    <string>Lemma.icns</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

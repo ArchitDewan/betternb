@@ -10,15 +10,18 @@ enum TutorAction: String, Codable, Equatable, Sendable {
 
 enum TutorMessageKind {
     static func looksLikeMathStep(_ text: String) -> Bool {
-        let lowered = text.lowercased()
+        let stripped = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stripped.contains("?") || stripped.count > 200 { return false }
+        let lowered = stripped.lowercased()
         if lowered.contains("f'(") || lowered.contains("f′(") || lowered.contains("dy/dx") || lowered.contains("d/dx") {
             return true
         }
-        let stripped = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if stripped.contains("?") || stripped.count > 200 { return false }
+        if stripped.contains("\\") || stripped.contains("$") {
+            return true
+        }
         return stripped.contains("=") && stripped.unicodeScalars.allSatisfy { scalar in
             CharacterSet.alphanumerics
-                .union(CharacterSet(charactersIn: "+-*/^().= \t"))
+                .union(CharacterSet(charactersIn: "+-*/^().= \t\\_{}"))
                 .contains(scalar)
         }
     }
@@ -80,6 +83,7 @@ struct TutorTurnResponse: Codable, Equatable, Sendable {
     let capability: String
     let assessment: String
     let message: String
+    let summary: String?
     let errorCategory: String?
     let verificationStatus: TutorVerificationStatus
     let sources: [TutorSource]
@@ -87,10 +91,35 @@ struct TutorTurnResponse: Codable, Equatable, Sendable {
     let nextHintLevel: Int?
     let nextAction: String
 
+    init(
+        capability: String,
+        assessment: String,
+        message: String,
+        summary: String? = nil,
+        errorCategory: String? = nil,
+        verificationStatus: TutorVerificationStatus,
+        sources: [TutorSource],
+        actionAccepted: Bool = true,
+        nextHintLevel: Int? = nil,
+        nextAction: String
+    ) {
+        self.capability = capability
+        self.assessment = assessment
+        self.message = message
+        self.summary = summary
+        self.errorCategory = errorCategory
+        self.verificationStatus = verificationStatus
+        self.sources = sources
+        self.actionAccepted = actionAccepted
+        self.nextHintLevel = nextHintLevel
+        self.nextAction = nextAction
+    }
+
     enum CodingKeys: String, CodingKey {
         case capability
         case assessment
         case message
+        case summary
         case errorCategory = "error_category"
         case verificationStatus = "verification_status"
         case sources
@@ -152,6 +181,7 @@ struct TutorConversationEntry: Identifiable, Equatable, Sendable {
     let assessment: String?
     let errorCategory: String?
     let sources: [TutorSource]
+    let summary: String?
 
     init(
         id: UUID = UUID(),
@@ -161,7 +191,8 @@ struct TutorConversationEntry: Identifiable, Equatable, Sendable {
         verificationStatus: TutorVerificationStatus? = nil,
         assessment: String? = nil,
         errorCategory: String? = nil,
-        sources: [TutorSource] = []
+        sources: [TutorSource] = [],
+        summary: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -171,6 +202,368 @@ struct TutorConversationEntry: Identifiable, Equatable, Sendable {
         self.assessment = assessment
         self.errorCategory = errorCategory
         self.sources = sources
+        self.summary = summary
+    }
+}
+
+enum PracticeStepStatus: Equatable, Sendable {
+    case pending
+    case correct
+    case incorrect
+    case unchecked
+}
+
+struct PracticeWorksheetStep: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let number: Int
+    let text: String
+    let status: PracticeStepStatus
+    let diagnosis: String?
+    let feedback: String?
+    let summary: String?
+    let errorCategory: String?
+    let verificationStatus: TutorVerificationStatus?
+    let sources: [TutorSource]
+    let isFocus: Bool
+}
+
+struct PracticeInspectorSnapshot: Equatable, Sendable {
+    let checkedCount: Int
+    let totalCount: Int
+    let verdict: String?
+    let errorType: String?
+    let concept: String?
+    let sourceTitle: String?
+    let sourceSection: String?
+    let note: String?
+    let noteCaption: String
+}
+
+struct PracticeWorksheetNote: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let title: String
+    let text: String
+    let emphasized: Bool
+}
+
+struct RevealedSolutionStep: Identifiable, Equatable, Sendable {
+    let number: Int
+    let text: String
+
+    var id: Int { number }
+
+    var boxedAnswer: String? {
+        boxedMatch?.answer
+    }
+
+    var textWithoutBoxedAnswer: String {
+        guard let match = boxedMatch else { return text }
+        var remainder = text
+        remainder.removeSubrange(match.range)
+        return remainder
+            .replacingOccurrences(of: " .", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var boxedMatch: (range: Range<String.Index>, answer: String)? {
+        let command = text.range(of: #"\boxed{"#, options: .backwards)
+            ?? text.range(of: "boxed{", options: .backwards)
+        guard let command else { return nil }
+
+        var depth = 1
+        var cursor = command.upperBound
+        while cursor < text.endIndex {
+            let character = text[cursor]
+            if character == "{" {
+                depth += 1
+            } else if character == "}" {
+                depth -= 1
+                if depth == 0 {
+                    let afterClosingBrace = text.index(after: cursor)
+                    return (
+                        command.lowerBound..<afterClosingBrace,
+                        String(text[command.upperBound..<cursor])
+                    )
+                }
+            }
+            cursor = text.index(after: cursor)
+        }
+        return nil
+    }
+}
+
+struct RevealedSolutionLayout: Equatable, Sendable {
+    let introduction: String?
+    let steps: [RevealedSolutionStep]
+
+    init(_ source: String) {
+        let normalized = Self.repairBareBoxedCommands(in: source)
+        let text = normalized as NSString
+        let range = NSRange(location: 0, length: text.length)
+        let expression = try? NSRegularExpression(
+            pattern: #"(?i)\bStep\s+(\d+)\s*[.:]\s*"#
+        )
+        let matches = expression?.matches(in: normalized, range: range) ?? []
+
+        guard !matches.isEmpty else {
+            let content = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sentences = Self.sentences(in: content)
+            if sentences.count >= 3 {
+                introduction = nil
+                steps = sentences.enumerated().map { index, sentence in
+                    RevealedSolutionStep(number: index + 1, text: sentence)
+                }
+            } else {
+                introduction = content.isEmpty ? nil : content
+                steps = []
+            }
+            return
+        }
+
+        let opening = text.substring(with: NSRange(location: 0, length: matches[0].range.location))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        introduction = opening.isEmpty ? nil : opening
+
+        steps = matches.enumerated().compactMap { index, match in
+            guard let numberRange = Range(match.range(at: 1), in: normalized),
+                  let number = Int(normalized[numberRange]) else {
+                return nil
+            }
+            let contentStart = NSMaxRange(match.range)
+            let contentEnd = index + 1 < matches.count ? matches[index + 1].range.location : text.length
+            guard contentEnd >= contentStart else { return nil }
+            let content = text.substring(
+                with: NSRange(location: contentStart, length: contentEnd - contentStart)
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else { return nil }
+            return RevealedSolutionStep(number: number, text: content)
+        }
+    }
+
+    private static func repairBareBoxedCommands(in source: String) -> String {
+        guard let expression = try? NSRegularExpression(pattern: #"(?<!\\)\bboxed\s*\{"#) else {
+            return source
+        }
+        let repaired = NSMutableString(string: source)
+        let matches = expression.matches(
+            in: source,
+            range: NSRange(location: 0, length: (source as NSString).length)
+        )
+        for match in matches.reversed() {
+            repaired.replaceCharacters(in: match.range, with: #"\boxed{"#)
+        }
+        return repaired as String
+    }
+
+    private static func sentences(in source: String) -> [String] {
+        guard !source.isEmpty else { return [] }
+        let text = source as NSString
+        let fullRange = NSRange(location: 0, length: text.length)
+        let punctuation = try? NSRegularExpression(pattern: #"(?<=[.!?])\s+(?=[A-Z])"#)
+        let transitions = try? NSRegularExpression(
+            pattern: #"\b(?:For your function|The exponent|Here the exponent|Apply|Applying|Simplify|Subtract|Since|Therefore|Now|Next|Finally)\b"#
+        )
+        var boundarySet: Set<Int> = [0, text.length]
+        punctuation?.matches(in: source, range: fullRange).forEach {
+            boundarySet.insert(NSMaxRange($0.range))
+        }
+        transitions?.matches(in: source, range: fullRange).forEach {
+            if $0.range.location > 0 {
+                boundarySet.insert($0.range.location)
+            }
+        }
+        let boundaries = boundarySet.sorted()
+
+        return zip(boundaries, boundaries.dropFirst()).compactMap { start, end in
+            let sentence = text.substring(
+                with: NSRange(location: start, length: end - start)
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            return sentence.isEmpty ? nil : sentence
+        }
+    }
+}
+
+enum PracticeWorksheetItem: Identifiable, Equatable, Sendable {
+    case step(PracticeWorksheetStep)
+    case note(PracticeWorksheetNote)
+
+    var id: UUID {
+        switch self {
+        case .step(let step): step.id
+        case .note(let note): note.id
+        }
+    }
+}
+
+struct PracticeWorksheet: Equatable, Sendable {
+    let problem: String?
+    let steps: [PracticeWorksheetStep]
+    let notes: [PracticeWorksheetNote]
+    let items: [PracticeWorksheetItem]
+    let inspector: PracticeInspectorSnapshot
+    let latestHint: TutorConversationEntry?
+    let latestSolution: TutorConversationEntry?
+
+    var showsInspector: Bool {
+        inspector.verdict != nil || steps.contains { $0.feedback != nil }
+    }
+
+    init(problem: String?, entries: [TutorConversationEntry], isBusy: Bool = false) {
+        self.problem = problem
+        let built = Self.makeSteps(from: entries, isBusy: isBusy)
+        self.steps = built
+        self.items = Self.makeItems(from: entries, steps: built)
+        self.notes = self.items.compactMap { item in
+            if case .note(let note) = item { return note }
+            return nil
+        }
+        self.latestHint = entries.last { $0.role == .tutor && $0.kind.wireName == "hint" }
+        self.latestSolution = entries.last { $0.role == .tutor && $0.kind == .solution }
+        self.inspector = Self.makeInspector(steps: built)
+    }
+
+    private static func makeSteps(from entries: [TutorConversationEntry], isBusy: Bool) -> [PracticeWorksheetStep] {
+        var steps: [PracticeWorksheetStep] = []
+        var focusID: UUID?
+        for (index, entry) in entries.enumerated() {
+            guard entry.role == .student, case .step(let number) = entry.kind else { continue }
+            let following = index + 1 < entries.count ? entries[index + 1] : nil
+            let feedback = following.flatMap { next -> TutorConversationEntry? in
+                guard next.role == .tutor, next.kind == .message else { return nil }
+                return next
+            }
+            let status: PracticeStepStatus
+            if feedback?.assessment == "correct" {
+                status = .correct
+            } else if feedback?.assessment == "incorrect" {
+                status = .incorrect
+            } else if feedback == nil {
+                status = isBusy || following == nil ? .pending : .unchecked
+            } else {
+                status = .unchecked
+            }
+            if status == .incorrect, focusID == nil {
+                focusID = entry.id
+            }
+            steps.append(
+                PracticeWorksheetStep(
+                    id: entry.id,
+                    number: number,
+                    text: entry.text,
+                    status: status,
+                    diagnosis: status == .incorrect ? feedback?.text : nil,
+                    feedback: feedback?.text,
+                    summary: feedback?.summary,
+                    errorCategory: feedback?.errorCategory,
+                    verificationStatus: feedback?.verificationStatus,
+                    sources: feedback?.sources ?? [],
+                    isFocus: false
+                )
+            )
+        }
+        let focused = focusID ?? steps.last?.id
+        return steps.map { step in
+            PracticeWorksheetStep(
+                id: step.id,
+                number: step.number,
+                text: step.text,
+                status: step.status,
+                diagnosis: step.diagnosis,
+                feedback: step.feedback,
+                summary: step.summary,
+                errorCategory: step.errorCategory,
+                verificationStatus: step.verificationStatus,
+                sources: step.sources,
+                isFocus: step.id == focused
+            )
+        }
+    }
+
+    private static func makeItems(
+        from entries: [TutorConversationEntry],
+        steps: [PracticeWorksheetStep]
+    ) -> [PracticeWorksheetItem] {
+        let stepsByID = Dictionary(uniqueKeysWithValues: steps.map { ($0.id, $0) })
+        var items: [PracticeWorksheetItem] = []
+        for (index, entry) in entries.enumerated() {
+            if entry.role == .student {
+                if case .problem = entry.kind { continue }
+                if case .step = entry.kind, let step = stepsByID[entry.id] {
+                    items.append(.step(step))
+                    continue
+                }
+                if case .message = entry.kind {
+                    items.append(.note(PracticeWorksheetNote(id: entry.id, title: "You", text: entry.text, emphasized: false)))
+                }
+                continue
+            }
+            switch entry.kind {
+            case .hint:
+                items.append(.note(PracticeWorksheetNote(id: entry.id, title: entry.kind.caption, text: entry.text, emphasized: false)))
+            case .solution:
+                items.append(.note(PracticeWorksheetNote(id: entry.id, title: "Solution", text: entry.text, emphasized: true)))
+            case .message:
+                let previous = index > 0 ? entries[index - 1] : nil
+                if let previous, previous.role == .student, case .step = previous.kind {
+                    continue
+                }
+                items.append(.note(PracticeWorksheetNote(id: entry.id, title: "Tutor", text: entry.text, emphasized: false)))
+            case .problem, .step:
+                continue
+            }
+        }
+        return items
+    }
+
+    private static func makeInspector(
+        steps: [PracticeWorksheetStep]
+    ) -> PracticeInspectorSnapshot {
+        let checked = steps.filter { $0.status == .correct || $0.status == .incorrect }
+        let focus = steps.first(where: \.isFocus)
+        let source = focus?.sources.first
+        let hasCheck = focus?.feedback != nil || focus?.status == .pending
+        return PracticeInspectorSnapshot(
+            checkedCount: checked.count,
+            totalCount: steps.count,
+            verdict: hasCheck ? displayVerdict(focus) : nil,
+            errorType: hasCheck ? displayErrorType(focus?.errorCategory) : nil,
+            concept: hasCheck ? source?.title : nil,
+            sourceTitle: hasCheck ? source?.title : nil,
+            sourceSection: hasCheck ? source?.section : nil,
+            note: hasCheck ? (focus?.summary ?? focus?.feedback) : nil,
+            noteCaption: hasCheck ? displayNoteCaption(focus) : ""
+        )
+    }
+
+    private static func displayVerdict(_ step: PracticeWorksheetStep?) -> String? {
+        guard let step else { return nil }
+        switch step.status {
+        case .correct: return "Correct"
+        case .incorrect: return "Incorrect"
+        case .pending: return "Checking"
+        case .unchecked: return step.feedback == nil ? nil : "Not graded"
+        }
+    }
+
+    private static func displayNoteCaption(_ step: PracticeWorksheetStep?) -> String {
+        switch step?.status {
+        case .incorrect: return "First break"
+        case .correct: return "Check"
+        case .pending: return "Check"
+        case .unchecked: return "Check"
+        case nil: return ""
+        }
+    }
+
+    private static func displayErrorType(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
+
+extension TutorSessionStore {
+    var worksheet: PracticeWorksheet {
+        PracticeWorksheet(problem: problem, entries: entries, isBusy: isBusy)
     }
 }
 
@@ -458,7 +851,8 @@ final class TutorSessionStore {
                     verificationStatus: checked ? response.verificationStatus : nil,
                     assessment: response.assessment,
                     errorCategory: checked ? response.errorCategory : nil,
-                    sources: response.sources
+                    sources: response.sources,
+                    summary: response.summary
                 )
             )
             nextHintLevel = response.nextHintLevel
@@ -504,11 +898,18 @@ struct CourseProblem: Identifiable, Equatable, Sendable {
     let id: UUID
     var prompt: String
     var openedInPractice: Bool
+    let sources: [TutorSource]
 
-    init(id: UUID = UUID(), prompt: String, openedInPractice: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        prompt: String,
+        openedInPractice: Bool = false,
+        sources: [TutorSource] = []
+    ) {
         self.id = id
         self.prompt = prompt
         self.openedInPractice = openedInPractice
+        self.sources = sources
     }
 }
 
@@ -518,10 +919,10 @@ final class ProblemSetStore {
     private(set) var items: [CourseProblem] = []
 
     @discardableResult
-    func add(_ prompt: String) -> CourseProblem? {
+    func add(_ prompt: String, sources: [TutorSource] = []) -> CourseProblem? {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let item = CourseProblem(prompt: trimmed)
+        let item = CourseProblem(prompt: trimmed, sources: sources)
         items.insert(item, at: 0)
         return item
     }

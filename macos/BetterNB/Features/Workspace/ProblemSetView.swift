@@ -52,6 +52,11 @@ struct ProblemSetView: View {
     private func problemCard(_ item: CourseProblem) -> some View {
         VStack(alignment: .leading, spacing: 10 * zoom) {
             TutorMathText(source: item.prompt, fontSize: 15 * zoom)
+            if let source = item.sources.first {
+                Label("Generated from \(source.title) · \(source.section)", systemImage: "doc.text")
+                    .zFont(11, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
+            }
             HStack {
                 Text(item.openedInPractice ? "Opened in Practice" : "Not started")
                     .zFont(11, zoom: zoom)
@@ -76,7 +81,7 @@ struct ProblemSetView: View {
 
     private var addComposer: some View {
         VStack(alignment: .leading, spacing: 8 * zoom) {
-            if draft.contains("\\") || draft.contains("^") {
+            if MathMarkup.livePreview(for: draft) != nil {
                 TutorMathText(source: draft, fontSize: 14 * zoom)
                     .padding(10 * zoom)
                     .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous))

@@ -6,6 +6,8 @@ from betternb_tutor.knowledge import KnowledgeChunk, SearchResult
 from betternb_tutor.orchestrator import TutorOrchestrator
 from betternb_tutor.providers import ModelAssessment
 from betternb_tutor.verification import VerificationResult
+from betternb_tutor.course_study import CourseSource, GeneratedCourseProblem, GroundedAnswer
+from betternb_tutor.contracts import SourceReference
 
 
 class StubKnowledgeRepository:
@@ -43,6 +45,40 @@ class StubModel:
 def client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
     return TestClient(create_app(orchestrator))
+
+
+class StubCourseSources:
+    def import_pdf(self, course_id, filename, data):
+        assert course_id == "calculus-1"
+        assert data.startswith(b"%PDF")
+        return CourseSource("source-1", filename, 2, 3)
+
+    def list_sources(self, course_id):
+        return [CourseSource("source-1", "Lecture.pdf", 2, 3)]
+
+
+class StubCourseStudy:
+    sources = StubCourseSources()
+
+    def answer(self, course_id, question):
+        return GroundedAnswer(
+            "Use the product rule.",
+            [SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
+        )
+
+    def generate_problems(self, course_id, count):
+        return [
+            GeneratedCourseProblem(
+                prompt=f"Generated problem {index + 1}",
+                sources=[SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
+            )
+            for index in range(count)
+        ]
+
+
+def course_client() -> TestClient:
+    orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
+    return TestClient(create_app(orchestrator, course_study=StubCourseStudy()))
 
 
 def test_health_and_tutor_turn_contract() -> None:
@@ -125,3 +161,39 @@ def test_transcription_rejects_pdf_and_marks_image_for_confirmation() -> None:
     assert accepted.status_code == 200
     assert accepted.json()["requires_confirmation"] is True
     assert accepted.json()["transcription"] == "Differentiate f(x) = x^2"
+
+
+def test_course_source_question_and_problem_generation_contracts() -> None:
+    test_client = course_client()
+
+    imported = test_client.post(
+        "/v1/courses/calculus-1/sources",
+        files={"document": ("Lecture.pdf", b"%PDF-1.4 sample", "application/pdf")},
+    )
+    listed = test_client.get("/v1/courses/calculus-1/sources")
+    answered = test_client.post(
+        "/v1/courses/calculus-1/answers",
+        json={"question": "What rule applies?"},
+    )
+    generated = test_client.post(
+        "/v1/courses/calculus-1/problems",
+        json={"count": 2},
+    )
+
+    assert imported.status_code == 200
+    assert imported.json()["page_count"] == 2
+    assert listed.json()[0]["filename"] == "Lecture.pdf"
+    assert answered.json()["sources"][0]["section"] == "Page 2"
+    assert [problem["prompt"] for problem in generated.json()["problems"]] == [
+        "Generated problem 1",
+        "Generated problem 2",
+    ]
+
+
+def test_course_source_upload_rejects_non_pdf() -> None:
+    response = course_client().post(
+        "/v1/courses/calculus-1/sources",
+        files={"document": ("notes.txt", b"hello", "text/plain")},
+    )
+
+    assert response.status_code == 415

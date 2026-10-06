@@ -8,6 +8,7 @@ struct PromptComposer: View {
     var placeholder = "Ask about this step"
     var allowedContentTypes: [UTType] = [.png, .jpeg, .pdf]
     var attachmentDescription = "PNG, JPEG, or PDF"
+    var expanded = false
     var onSend: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,7 +34,25 @@ struct PromptComposer: View {
                     .transition(.opacity)
             }
 
-            composerRow
+            if let preview = MathMarkup.livePreview(for: draft) {
+                TutorMathText(markup: preview, fontSize: 16 * zoom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10 * zoom)
+                    .padding(.top, 8 * zoom)
+                    .padding(.bottom, 2 * zoom)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Math preview, \(preview.accessibleText)")
+                Rectangle()
+                    .fill(AppTheme.stroke)
+                    .frame(height: 1)
+                    .padding(.horizontal, 8 * zoom)
+            }
+
+            if expanded {
+                expandedComposer
+            } else {
+                composerRow
+            }
         }
         .padding(8 * zoom)
         .background(AppTheme.elevated, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
@@ -62,6 +81,22 @@ struct PromptComposer: View {
             draftField
             sendButton
         }
+    }
+
+    private var expandedComposer: some View {
+        VStack(alignment: .leading, spacing: 12 * zoom) {
+            draftField
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 10 * zoom) {
+                addButton
+                Spacer(minLength: 0)
+                sendButton
+            }
+        }
+        .frame(height: 108 * zoom, alignment: .topLeading)
     }
 
     private var addButton: some View {

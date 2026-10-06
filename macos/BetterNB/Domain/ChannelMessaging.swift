@@ -95,7 +95,7 @@ extension ChannelMessageRepository {
 actor InMemoryChannelMessageRepository: ChannelMessageRepository {
     private var messagesByChannel: [WorkspaceDestination: [SessionMessage]]
 
-    init(messagesByChannel: [WorkspaceDestination: [SessionMessage]] = [.practice: SessionMessage.opening]) {
+    init(messagesByChannel: [WorkspaceDestination: [SessionMessage]] = [:]) {
         self.messagesByChannel = messagesByChannel
     }
 
@@ -193,9 +193,17 @@ final class WorkspaceConversationStore {
         }
     }
 
-    func appendPreviewTutorReply(_ text: String, in channel: WorkspaceDestination) {
+    func appendTutorReply(
+        _ text: String,
+        sources: [TutorSource] = [],
+        in channel: WorkspaceDestination
+    ) {
         messagesByChannel[channel, default: []].append(
-            SessionMessage(role: .tutor, text: text)
+            SessionMessage(role: .tutor, text: text, sources: sources)
         )
+    }
+
+    func appendPreviewTutorReply(_ text: String, in channel: WorkspaceDestination) {
+        appendTutorReply(text, in: channel)
     }
 }

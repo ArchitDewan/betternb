@@ -82,6 +82,7 @@ class TutorOrchestrator:
             capability=capability,
             assessment=response_assessment,
             message=assessment.message,
+            summary=assessment.summary or _short_summary(assessment.message),
             error_category=assessment.error_category,
             verification_status=response_status,
             sources=[
@@ -123,7 +124,16 @@ def _looks_like_step(text: str) -> bool:
     stripped = text.strip()
     if "?" in stripped or len(stripped) > 200:
         return False
+    if "\\" in stripped or "$" in stripped:
+        return True
     return bool(re.fullmatch(r"[0-9A-Za-z+\-*/^().\s]+=.+", stripped))
+
+
+def _short_summary(message: str) -> str:
+    first = message.split(". ")[0].strip()
+    if first and not first.endswith("."):
+        first += "."
+    return first[:180]
 
 
 def _looks_like_calculus_request(text: str) -> bool:

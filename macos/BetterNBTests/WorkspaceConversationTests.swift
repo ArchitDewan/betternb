@@ -4,46 +4,39 @@ import Testing
 
 struct WorkspaceConversationTests {
     @Test
-    func onlyCourseConversationSurfacesAcceptMessages() {
-        let expected: Set<WorkspaceDestination> = [
-            .materials,
-            .notes,
-            .problems,
-            .practice,
-            .flashcards,
-            .formulaSheet,
-            .canvas,
-        ]
+    func studyConversationDoesNotInventAnOpeningContext() async throws {
+        let repository = InMemoryChannelMessageRepository()
 
-        #expect(Set(WorkspaceDestination.allCases.filter(\.acceptsMessages)) == expected)
+        #expect(try await repository.messages(in: .study).isEmpty)
+    }
+
+    @Test
+    func onlyStudyAcceptsMessages() {
+        #expect(WorkspaceDestination.allCases.filter(\.acceptsMessages) == [.study])
     }
 
     @Test
     func sendTrimsTextAndRejectsBlankInput() async throws {
         let repository = InMemoryChannelMessageRepository(messagesByChannel: [:])
 
-        let message = try await repository.send(text: "  Compare both sides  \n", in: .problems)
+        let message = try await repository.send(text: "  Compare both sides  \n", in: .study)
         #expect(message.text == "Compare both sides")
         await #expect(throws: ChannelMessageError.emptyMessage) {
-            try await repository.send(text: " \n\t ", in: .problems)
+            try await repository.send(text: " \n\t ", in: .study)
         }
-        let messages = try await repository.messages(in: .problems)
+        let messages = try await repository.messages(in: .study)
         #expect(messages.map(\.text) == ["Compare both sides"])
     }
 
     @Test
-    func conversationsRemainIsolatedByDestination() async throws {
+    func nonStudyDestinationsRejectConversationMessages() async throws {
         let repository = InMemoryChannelMessageRepository(messagesByChannel: [:])
 
-        _ = try await repository.send(text: "Explain this definition", in: .notes)
-        _ = try await repository.send(text: "Connect these ideas", in: .canvas)
-
-        let notes = try await repository.messages(in: .notes)
-        let canvas = try await repository.messages(in: .canvas)
-        #expect(notes.map(\.text) == ["Explain this definition"])
-        #expect(canvas.map(\.text) == ["Connect these ideas"])
         await #expect(throws: ChannelMessageError.unsupportedDestination) {
-            try await repository.messages(in: .overview)
+            try await repository.send(text: "Explain this definition", in: .library)
+        }
+        await #expect(throws: ChannelMessageError.unsupportedDestination) {
+            try await repository.messages(in: .problems)
         }
     }
 
@@ -52,14 +45,14 @@ struct WorkspaceConversationTests {
         let repository = InMemoryChannelMessageRepository(messagesByChannel: [:])
         let conversations = WorkspaceConversationStore(repository: repository)
 
-        await conversations.load(.notes)
-        #expect(await conversations.send("Keep this message", in: .notes))
+        await conversations.load(.study)
+        #expect(await conversations.send("Keep this message", in: .study))
 
-        await conversations.load(.problems)
-        await conversations.load(.notes)
+        await conversations.load(.library)
+        await conversations.load(.study)
 
-        #expect(conversations.messages(in: .notes).map(\.text) == ["Keep this message"])
-        #expect(conversations.messages(in: .problems).isEmpty)
+        #expect(conversations.messages(in: .study).map(\.text) == ["Keep this message"])
+        #expect(conversations.messages(in: .library).isEmpty)
     }
 
     @Test
@@ -71,7 +64,7 @@ struct WorkspaceConversationTests {
             data: Data([0x89, 0x50, 0x4E, 0x47])
         )
 
-        let message = try await repository.send(text: "", attachment: attachment, in: .notes)
+        let message = try await repository.send(text: "", attachment: attachment, in: .study)
 
         #expect(message.text.isEmpty)
         #expect(message.attachment?.filename == "limit-graph.png")

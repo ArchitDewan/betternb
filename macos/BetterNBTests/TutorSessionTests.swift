@@ -36,6 +36,53 @@ private actor RecordingTutorClient: TutorClient {
 
 struct TutorSessionTests {
     @Test
+    func revealedSolutionSeparatesNumberedStepsAndRepairsBareBoxedAnswer() {
+        let layout = RevealedSolutionLayout(
+            "Your equation is correct. Step 1. Rewrite the fraction. "
+                + "Step 2: Differentiate both sides. boxed{f'(99)\\cdot f'(99)=99}"
+        )
+
+        #expect(layout.introduction == "Your equation is correct.")
+        #expect(layout.steps.map(\.number) == [1, 2])
+        #expect(layout.steps[0].text == "Rewrite the fraction.")
+        #expect(layout.steps[1].text.contains(#"\boxed{f'(99)\cdot f'(99)=99}"#))
+    }
+
+    @Test
+    func revealedSolutionWithoutNumberedStepsRemainsReadable() {
+        let layout = RevealedSolutionLayout("Use the power rule, then simplify.")
+
+        #expect(layout.introduction == "Use the power rule, then simplify.")
+        #expect(layout.steps.isEmpty)
+    }
+
+    @Test
+    func revealedSolutionBuildsStepsWhenProviderReturnsSeveralSentences() {
+        let layout = RevealedSolutionLayout(
+            "Start with f(x) = x^2. Apply the power rule. Therefore boxed{f'(x)=2x}."
+        )
+
+        #expect(layout.introduction == nil)
+        #expect(layout.steps.map(\.number) == [1, 2, 3])
+        #expect(layout.steps[2].text == #"Therefore \boxed{f'(x)=2x}."#)
+        #expect(layout.steps[2].boxedAnswer == "f'(x)=2x")
+        #expect(layout.steps[2].textWithoutBoxedAnswer == "Therefore.")
+    }
+
+    @Test
+    func revealedSolutionUsesMathTransitionsWhenEquationPunctuationIsMissing() {
+        let layout = RevealedSolutionLayout(
+            "Use the power rule: \\frac{d}{dx}x^n=nx^{n-1} "
+                + "For your function, f(x)=x^2 The exponent is 2, so f'(x)=2x^{2-1} "
+                + "Subtract one from the exponent. Since x^1=x, boxed{f'(x)=2x}"
+        )
+
+        #expect(layout.steps.count == 5)
+        #expect(layout.steps[1].text.hasPrefix("For your function"))
+        #expect(layout.steps[4].text.contains(#"\boxed{f'(x)=2x}"#))
+    }
+
+    @Test
     func tutorTurnsLabelHintsAndRevealedSolutions() {
         #expect(TutorTurnKind.problem.caption == "Problem")
         #expect(TutorTurnKind.message.caption.isEmpty)
@@ -48,8 +95,12 @@ struct TutorSessionTests {
     func onlyWrittenDerivativesCountAsCheckableSteps() {
         #expect(!TutorMessageKind.looksLikeMathStep("can you help me differentiate 7x^2 + 4x?"))
         #expect(!TutorMessageKind.looksLikeMathStep("hmmm i think i take derivatives individually?"))
+        #expect(!TutorMessageKind.looksLikeMathStep("what should I do next?"))
         #expect(TutorMessageKind.looksLikeMathStep("f'(x) = 14x + 4"))
         #expect(TutorMessageKind.looksLikeMathStep("dy/dx = 2x"))
+        #expect(TutorMessageKind.looksLikeMathStep("u = cos 2x"))
+        #expect(TutorMessageKind.looksLikeMathStep(#"u = \cos x"#))
+        #expect(TutorMessageKind.looksLikeMathStep(#"\int \sin 2x / \cos^2 2x \, dx"#))
     }
 
     @Test @MainActor
@@ -62,6 +113,9 @@ struct TutorSessionTests {
         #expect(store.entries.first?.role == .student)
         #expect(store.entries.first?.text == "can you help me differentiate 7x^2 + 4x?")
         #expect(store.entries.last?.role == .tutor)
+        let sheet = store.worksheet
+        #expect(sheet.notes.contains { $0.title == "Tutor" && $0.text == "The inner derivative is missing." })
+        #expect(sheet.inspector.note == nil)
         let requests = await client.recordedRequests()
         #expect(requests.map(\.action) == [.chat])
         #expect(requests[0].attemptSteps.isEmpty)
@@ -80,6 +134,8 @@ struct TutorSessionTests {
         #expect(requests.map(\.action) == [.chat, .chat, .checkStep])
         #expect(requests[1].attemptSteps == ["hmmm i think i take derivatives individually?"])
         #expect(store.entries.last?.verificationStatus == .verified)
+        #expect(store.worksheet.notes.contains { $0.title == "You" && $0.text.contains("individually") })
+        #expect(store.worksheet.notes.contains { $0.title == "Tutor" })
     }
 
     @Test @MainActor
@@ -168,6 +224,46 @@ struct TutorSessionTests {
     }
 
     @Test @MainActor
+    func sendAutoChecksALatexLineAndKeepsAQuestionAsChat() async {
+        let client = RecordingTutorClient()
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit(#"\int \sin 2x / \cos^2 2x \, dx"#))
+        #expect(await store.submit("u = \\cos 2x"))
+        #expect(await store.submit("what should I do next?"))
+
+        let requests = await client.recordedRequests()
+        #expect(requests.map(\.action) == [.chat, .checkStep, .chat])
+        #expect(store.worksheet.steps.count == 1)
+        #expect(store.worksheet.notes.contains { $0.title == "You" && $0.text.contains("next") })
+    }
+
+    @Test @MainActor
+    func inspectorUsesTheShortSummaryAndTheStepKeepsTheLongNote() async {
+        let client = RecordingTutorClient()
+        await client.setResponse(TutorTurnResponse(
+            capability: "calculus.derivatives",
+            assessment: "incorrect",
+            message: "The minus sign was applied a second time when you changed bounds. Keep du = -sin x dx and flip the limits once.",
+            summary: "The sign was counted twice when changing bounds.",
+            errorCategory: "procedural",
+            verificationStatus: .modelJudged,
+            sources: [TutorSource(sourceID: "calc.integrals.u-sub", title: "u-substitution", section: "Definite bounds")],
+            actionAccepted: true,
+            nextHintLevel: 1,
+            nextAction: "request_hint"
+        ))
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit("Differentiate f(x) = x^2"))
+        #expect(await store.submit("u = \\cos x"))
+
+        let sheet = store.worksheet
+        #expect(sheet.steps[0].feedback?.contains("minus sign") == true)
+        #expect(sheet.inspector.note == "The sign was counted twice when changing bounds.")
+        #expect(sheet.inspector.verdict == "Incorrect")
+        #expect(sheet.inspector.errorType == "Procedural")
+    }
+
+    @Test @MainActor
     func askIntentStaysConversationAndCheckIntentForcesAStep() async {
         let client = RecordingTutorClient()
         let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
@@ -193,6 +289,114 @@ struct TutorSessionTests {
         #expect(tutor.problem == "Differentiate f(x) = x^2")
         #expect(tutor.entries.first?.kind == .problem)
         #expect(problems.items.first?.openedInPractice == true)
+    }
+
+    @Test @MainActor
+    func worksheetMapsCheckedStepsAndInspectorFromTutorFeedback() async {
+        let client = RecordingTutorClient()
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit("Differentiate f(x) = (x^2 + 1)^3"))
+        #expect(await store.submit("f'(x) = 3*(x^2 + 1)^2", intent: .check))
+
+        let sheet = store.worksheet
+        #expect(sheet.problem == "Differentiate f(x) = (x^2 + 1)^3")
+        #expect(sheet.steps.count == 1)
+        #expect(sheet.steps[0].number == 1)
+        #expect(sheet.steps[0].status == .incorrect)
+        #expect(sheet.steps[0].isFocus)
+        #expect(sheet.steps[0].diagnosis == "The inner derivative is missing.")
+        #expect(sheet.steps[0].errorCategory == "conceptual")
+        #expect(sheet.inspector.checkedCount == 1)
+        #expect(sheet.inspector.totalCount == 1)
+        #expect(sheet.inspector.verdict == "Incorrect")
+        #expect(sheet.inspector.errorType == "Conceptual")
+        #expect(sheet.inspector.sourceTitle == "Chain rule")
+        #expect(sheet.inspector.sourceSection == "Method")
+        #expect(sheet.inspector.note == "The inner derivative is missing.")
+        #expect(sheet.inspector.noteCaption == "First break")
+        #expect(sheet.showsInspector)
+    }
+
+    @Test @MainActor
+    func inspectorStaysEmptyUntilAStepIsChecked() async {
+        let client = RecordingTutorClient()
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit("Differentiate f(x) = (x^2 + 1)^3"))
+
+        let sheet = store.worksheet
+        #expect(sheet.steps.isEmpty)
+        #expect(sheet.inspector.checkedCount == 0)
+        #expect(sheet.inspector.totalCount == 0)
+        #expect(sheet.inspector.verdict == nil)
+        #expect(sheet.inspector.note == nil)
+        #expect(sheet.inspector.errorType == nil)
+        #expect(!sheet.showsInspector)
+    }
+
+    @Test @MainActor
+    func worksheetKeepsHintAndSolutionOffTheStepList() async {
+        let client = RecordingTutorClient()
+        await client.setResponse(TutorTurnResponse(
+            capability: "calculus.derivatives",
+            assessment: "correct",
+            message: "That term is right.",
+            errorCategory: nil,
+            verificationStatus: .verified,
+            sources: [TutorSource(sourceID: "calc.derivatives.power-rule", title: "Power rule", section: "Method")],
+            actionAccepted: true,
+            nextHintLevel: 1,
+            nextAction: "request_hint"
+        ))
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit("Differentiate f(x) = x^2"))
+        #expect(await store.submit("f'(x) = 2*x", intent: .check))
+        #expect(await store.requestHint())
+        #expect(await store.revealSolution())
+
+        let sheet = store.worksheet
+        #expect(sheet.steps.map(\.status) == [.correct])
+        #expect(sheet.steps[0].diagnosis == nil)
+        #expect(sheet.steps[0].feedback == "That term is right.")
+        #expect(sheet.latestHint != nil)
+        #expect(sheet.latestSolution != nil)
+        #expect(sheet.inspector.verdict == "Correct")
+        #expect(sheet.inspector.note == "That term is right.")
+        #expect(sheet.inspector.noteCaption == "Check")
+        #expect(sheet.inspector.sourceTitle == "Power rule")
+    }
+
+    @Test @MainActor
+    func inspectorKeepsTheCheckAfterAHintAndShowsUngradedChecks() async {
+        let client = RecordingTutorClient()
+        await client.setResponse(TutorTurnResponse(
+            capability: "calculus.derivatives",
+            assessment: "not_assessed",
+            message: "Write the substitution as an equation first.",
+            errorCategory: nil,
+            verificationStatus: .inconclusive,
+            sources: [],
+            actionAccepted: true,
+            nextHintLevel: 1,
+            nextAction: "request_hint"
+        ))
+        let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        #expect(await store.submit(#"\int \sin 2x / \cos^2 2x dx"#))
+        #expect(await store.submit("u = cos 2x", intent: .check))
+
+        var sheet = store.worksheet
+        #expect(sheet.steps[0].status == .unchecked)
+        #expect(sheet.steps[0].feedback == "Write the substitution as an equation first.")
+        #expect(sheet.inspector.verdict == "Not graded")
+        #expect(sheet.inspector.note == "Write the substitution as an equation first.")
+        #expect(sheet.inspector.checkedCount == 0)
+        #expect(sheet.inspector.totalCount == 1)
+
+        #expect(await store.requestHint())
+        sheet = store.worksheet
+        #expect(sheet.latestHint != nil)
+        #expect(sheet.inspector.note == "Write the substitution as an equation first.")
+        #expect(sheet.inspector.verdict == "Not graded")
+        #expect(sheet.inspector.noteCaption != "Hint 1")
     }
 }
 
@@ -241,5 +445,9 @@ private actor GatedTutorClient: TutorClient {
 private extension RecordingTutorClient {
     func setFailure(_ value: Bool) {
         shouldFail = value
+    }
+
+    func setResponse(_ value: TutorTurnResponse) {
+        response = value
     }
 }

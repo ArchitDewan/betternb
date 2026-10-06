@@ -1,8 +1,10 @@
-# BetterNB as a math notebook
+# Lemma as a math notebook
 
 Status: living completion guide. Use this document to finish the product. Use [PRODUCT.md](PRODUCT.md) for thesis, [ARCHITECTURE.md](ARCHITECTURE.md) for system boundaries, and `.agent/plans/` for the feature currently in motion.
 
-BetterNB is not NotebookLM with equations. NotebookLM chats over uploaded sources. BetterNB is done when a university student can put *their* course into a Mac workspace, work a problem as numbered steps, get the first wrong line checked, take a hint ladder without a dumped answer, then prove the idea on a *new* problem and see that concept return in Review.
+Lemma (formerly BetterNB) is not NotebookLM with equations. NotebookLM chats over uploaded sources. Lemma is done when a university student can put *their* course into a Mac workspace, work a problem as numbered steps, get the first wrong line checked, take a hint ladder without a dumped answer, then prove the idea on a *new* problem and see that concept return in Review.
+
+**Product-language note.** “Study Desk” is the internal name for the single place where a student begins, resumes work, or opens a guided worksheet. The visible v1 navigation label is the shorter **Study**; “Study Desk” is a candidate for later brand language.
 
 The experience fails if it becomes ChatGPT with a nicer renderer.
 
@@ -13,7 +15,7 @@ A Calculus I student on macOS can complete this loop without leaving the app, wi
 1. Open a course notebook (Calculus I).
 2. Add lecture PDFs, notes, a formula sheet, and a homework set.
 3. Circle or paste problem #35 into **Problems**.
-4. Open it in **Practice** and write Step 1 themselves.
+4. Open it in **Study** and write Step 1 themselves.
 5. Get a correct check of that step, or a pointed correction of the *first* break.
 6. Request Hint 1, then 2, then 3. Reveal only if they ask.
 7. Finish the problem in their own notation.
@@ -37,24 +39,21 @@ Until 8–10 exist, this is a strong tutor demo. Until 2 and 10 exist, it is not
 ## The student workflow (target)
 
 ```text
-Materials / Notes          Problems                 Practice                 Review
-(sources)                  (the set)                (the working page)       (evidence)
+Course sources             Problems                 Study                    Review
+(context in Study)         (the set)                (desk / worksheet)       (evidence)
      |                          |                         |                      |
-     |  circle / add prompt     |  Work in Practice       |  transfer problem    |
+     |  generate / add prompt   |  Start as a problem     |  transfer problem    |
      +------------------------->+------------------------>+--------------------->+
-                                |                         |
-                                |                    Flashcards /
-                                |                    Formula Sheet
-                                |                    (generated from misses)
+                                                          |
+                                                     Study tools
+                                                     (generated from misses)
 ```
 
-### Materials
+### Course sources
 
-Student drops a lecture PDF, slides, or image. BetterNB extracts text, display math, and page/region provenance. The student can open a page and mark a problem. That mark creates a `Problem` in the set, not a chat message.
+Student opens Sources from the Study desk and adds a lecture PDF. Lemma extracts text with page provenance, builds a semantic index, and can generate cited questions or Problems from that context. Sources are course context, not another destination the student must understand before beginning.
 
-### Notes
-
-Student writes or pastes lecture notes with inline math. Notes are a source for retrieval and can embed a problem. A note is not the tutor.
+The current F009B slice supports text-based PDFs. OCR, source-page viewing, selection regions, deletion, and student-authored notes remain later milestones.
 
 ### Problems
 
@@ -62,19 +61,38 @@ The homework set. Each card is a prompt, source (page 4, #35), status (not start
 
 Problems is not a second chatbot.
 
-### Practice
+### Study
 
-The working page for one problem:
+The one obvious starting surface. The desk automatically routes a course question into grounded conversation and a problem into the working **worksheet**; it does not ask the student to classify their input. Returning to the desk preserves the in-memory attempt.
 
-- Compact **Working on** rail.
-- First student cell labeled **Problem**.
-- Later checks labeled **Step N**.
-- Composer modes **Ask** vs **Check step**.
-- Live math preview before send.
-- Hint 1 · 2 · 3 · Reveal in order.
-- Verification badge only when a written step was actually graded.
-- Thinking state while the service runs.
-- Image paste → confirm extracted math before it becomes the problem or a step.
+- Breadcrumb: `Calculus I › Integration techniques › Problem 06 of 14`.
+- Problem block at the top: rendered math, source line (`Lecture 14 · page 4 · #35`), quiet check marks when the prompt is confirmed.
+- Student work as **full-width step rows** (`Step 1` … `Step N`), not left/right bubbles. A correct row gets a green check; the first break gets a red mark and stays the focus.
+- Primary action is **Check step** in the corner, with a thin progress bar (`2 / 3` steps checked so far).
+- Trailing inspector (collapsible): Step check, error type, concept, review schedule, course source. This is where the tutor explains — not a second bubble column.
+- Ask / hint / reveal stay available, but they annotate the current step. They do not turn the page into iMessage.
+
+Practice now uses this worksheet: a problem block, numbered step rows, Check step, and a trailing inspector. Ask / Hint / Reveal still annotate the current step. The sidebar is unchanged.
+
+## Visual north star
+
+The landing mock is the feel for the **Study worksheet**. The sidebar stays product navigation rather than a unit tree, but it is intentionally slim: Home and Review globally; Study and Problems for the course; generated Study Tools collapsed by default. Course Sources are opened from the Study desk.
+
+Keep the existing course-tool sidebar. Change the *center* of Practice from chat bubbles into a worksheet:
+
+| Surface | Feel |
+| --- | --- |
+| Page | Near-black canvas. Hairline dividers. No message feed. |
+| Problem | One block at the top: rendered math plus a quiet source line if we have one. |
+| Work | Full-width **Step N** rows, not left/right bubbles. `✓` or `✕` on the row. The first break can carry a one-line diagnosis under the math. |
+| Action | **Check step** is the loud control. A short `2 / 3` bar is enough. |
+| Tutor | Explain in a trailing inspector or under the broken step: error type, concept, optional citation. Do not add a second bubble column. Ask / Hint / Reveal still exist; they annotate the current step. |
+| Type | Same math renderer everywhere. Prose is secondary to the equation. |
+| Motion | Almost none. Status appears; the page does not bounce like iMessage. |
+
+What this is *not*: student/tutor pills, a composer that looks like iMessage, or a giant restated problem header above the same problem again.
+
+When a later feature touches the Study worksheet, match this interaction model. Course Sources own retrieval context; Problems owns the set; generated artifacts stay secondary.
 
 ### Flashcards / Formula Sheet / Canvas
 
@@ -84,7 +102,7 @@ Generated or curated from the course and from misses. They are study tools, not 
 
 Due items come from `MasteryEvent`s: failed transfer, hint-3 dependency, revealed-then-retry. Reading an explanation never marks mastery.
 
-## What is already shipped (F009A)
+## What is already shipped (F009A + first F009B slice)
 
 As of `feat/F009-guided-math-tutor` (notebook pass):
 
@@ -94,16 +112,18 @@ As of `feat/F009-guided-math-tutor` (notebook pass):
 | Built-in derivative pack RAG | `services/tutor/knowledge/calculus/derivatives` | Not the student’s PDFs |
 | SymPy derivative verifier | `verification.py` | Only supported derivative forms |
 | Orchestrator-owned retrieve / verify / hint policy | `orchestrator.py` | Model does not pick tools |
-| Practice notebook UI | `PracticeSessionView.swift` | Session dies on quit |
-| Problems as a set that opens Practice | `ProblemSetView.swift` | In-memory list, no PDF origin |
+| Study worksheet UI | `PracticeSessionView.swift` | In-memory attempt; not durable yet |
+| Problems as a set that opens Practice | `ProblemSetView.swift` | In-memory list; generated items retain source/page provenance |
 | Ask / Check, step labels, hint ladder, live preview | Practice composer | No transfer problem after finish |
 | Conversation history on each turn | `TutorTurnRequest.conversation` | Last 12 turns, not durable |
 | Native math rendering | `MathMarkup.swift`, `TutorMathText.swift` | Bounded LaTeX subset |
 | Image transcription + confirm | `/v1/math/transcriptions` | PNG/JPEG, student must confirm |
 | Honest labels | `verified` / `model_judged` / `inconclusive` | Citations computed, not a source panel |
 | Dev runner starts tutor | `scripts/run-dev.sh` | Requires `OPENAI_API_KEY` in `.env.local` |
+| Course PDF ingestion + semantic retrieval | `course_study.py`, `CourseStudy.swift` | Text PDFs only; in-memory until service restart |
+| Grounded Study answers + problem generation | `/v1/courses/{course_id}` | Page citations; no source viewer yet |
 
-F009B in the original tutor plan (course ingestion, pgvector, streaming, remote auth) is **not** done. It is phase 2–3 below, not a leftover toggle.
+The first F009B vertical slice is done. Durable resources, pgvector, OCR, streaming, remote auth, deletion, and source-page navigation remain phase 2–3 work.
 
 ## Rules that must not regress
 
@@ -117,7 +137,7 @@ These are product invariants. A later feature that violates them is incomplete.
 6. **Drafts survive failure.** A dead provider leaves the student’s step on screen.
 7. **Course A never retrieves Course B.**
 8. **Mastery comes from independent success** on a transfer problem, not from reading a reveal.
-9. **BetterNB owns retrieval and the index.** Hosted vector stores are adapters, not the architecture.
+9. **Lemma owns retrieval and the index.** Hosted vector stores are adapters, not the architecture.
 10. **Credentials stay in the service process**, never in the Mac app or logs.
 
 ## Core records (implement in this order)
@@ -181,7 +201,7 @@ Work one feature identifier per worktree. Reuse the worktree if a session contin
 
 **Why.** Without this, retrieval is a built-in pamphlet, not NotebookLM-for-math.
 
-**User-visible outcome.** Student adds a PDF or markdown notes under **Materials**. Practice citations open that source at the page/section used. A circled region on a PDF becomes a Problems item.
+**User-visible outcome.** Student adds a PDF or markdown notes under **Library**. Study citations open that source at the page/section used. A circled region on a PDF becomes a Problems item.
 
 **Build.**
 

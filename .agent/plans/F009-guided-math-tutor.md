@@ -12,6 +12,17 @@ F009A is accepted when the native Practice surface completes that loop against a
 - The loopback Python service lives under `services/tutor` with provider-neutral model, embedding, retrieval, and verification interfaces. OpenAI is the first adapter. Credentials stay in the service process.
 - Development sessions are in memory and the service binds only to loopback. Remote authentication, durable storage, course uploads, PDFs, pgvector, and additional subject capabilities are F009B or later work.
 
+## Math rendering rewrite (2026-10-04)
+
+The Step check note is still one jammed SwiftMath line (`You are working on` rendered as variables next to the integral). Peel/`\text{}` patches cannot fix that. Rebuild the pipeline:
+
+1. **Split first.** Default is English. Math is only `\[...\]`, `$$...$$`, `\(...\)`, `$...$`, `\begin...\end`, `\boxed{...}`, `\text{...}` as prose, or one bare command (`\int`, `\frac`, `\cos`, …) and its arguments. If a delimiter wrapped a whole sentence, unwrap and split again.
+2. **Casual math is a draft tool.** `2x^2` / `(a+b)/c` lift only from leftover prose, and only for live preview / student typing — never by feeding a tutor paragraph to SwiftMath.
+3. **Render in two views.** SwiftUI `Text` for sentences. SwiftMath for display-grade formulas (`\int`, `\frac`, `\sum`, scripts). Simple inline (`u=\cos 2x`) becomes readable words in the sentence. SwiftMath uses `fittingSize` and shrinks to the inspector width.
+4. **Tutor prompt.** Keep words outside `\(...\)`. Never wrap an English sentence in math delimiters.
+
+Acceptance: that screenshot note reads as a sentence, the integral is a real formula on its own line, `u = cos 2x` stays in the sentence, and no math run contains `working` / `useful` / `numerator`.
+
 ## Plan
 
 1. Establish Python contracts and failing tests for safe derivative verification, semantic retrieval, citations, hint policy, and API validation.
@@ -40,6 +51,11 @@ F009A is accepted when the native Practice surface completes that loop against a
 - [x] 2026-10-04: Give revealed solutions room: operator/function spacing, break long display math at `=` and `+`/`-`, wrap display instead of a tight HStack, and ask the model for one equation per step.
 - [x] 2026-10-04: Snapshot commit `075ea51` before the notebook pass.
 - [x] 2026-10-04: Turn Practice into a notebook: problem rail, Ask/Check, live draft preview, hint ladder, conversation history, and a Problems set that opens Practice.
+- [x] 2026-10-04: Parse casual typed math (`2x^2`, `(a+b)/c`, `d/dx`) live in the composer and on the worksheet. Stay on the native MathNode renderer instead of MathJax/iosMath.
+- [x] 2026-10-04: Replace the custom math typesetter with SwiftMath. Keep only document splitting and casual-to-LaTeX.
+- [x] 2026-10-04: Stop sending tutor English through SwiftMath. Sentences stay `Text`; only real formulas go to SwiftMath. `wrapEnglish` / `\text{}` jammed inspector copy.
+- [x] 2026-10-04: Rewrite the document pipeline. Prose is the default. Math is delimiters / one bare command / casual lift from leftover text. Display-grade formulas go to SwiftMath; simple inline becomes words. Screenshot-style inspector notes are a regression test.
+- [x] 2026-10-04: Bind Step check to the focused step. Empty until Check; keep the verdict after hints; do not dump the opening tutor chat into the pane.
 
 ## Decisions and discoveries
 
@@ -53,12 +69,14 @@ F009A is accepted when the native Practice surface completes that loop against a
 - The orchestrator owns conversation. The derivative verifier runs only on a written step (`f'(x)=`, `d/dx`, or a short equation). Informal help such as "can you help me differentiate 7x^2 + 4x?" is `chat`, returns `not_assessed`, and does not show a verification badge.
 - The student bubble is appended immediately. A Thinking row stays visible until the tutor reply, with a 400ms minimum wait so the response does not appear in the same instant.
 - Command-V pastes a PNG/JPEG from the clipboard into the practice composer when an image is on the pasteboard; otherwise text paste still goes to the field.
-- Practice matches the other channel conversation chrome: no duplicate problem header, no citation stack, student bubbles use the same paper/stroke treatment, and empty state language matches Materials/Notes. Align environments inside display math are parsed as stacked lines; English inside math delimiters is spaced as words.
+- Practice matches the other channel conversation chrome: no duplicate problem header, no citation stack, student bubbles use the same paper/stroke treatment, and empty state language matches Materials/Notes. Align environments inside display math are parsed as stacked lines.
+- SwiftMath renders formulas only. Wrapping inspector sentences in `\text{}` made “You’re working on” / “derivative” look like jammed variables. The document splitter now stops a math run at a sentence boundary and refuses to peel `2x^2` as English.
 
 ## Validation
 
 - `uv run pytest -q`: 30 passed; one non-failing Starlette `TestClient` deprecation warning.
-- `swift test`: 42 passed.
+- `swift test`: 54 passed (includes screenshot-style inspector note in four delimiter shapes).
+- `uv run pytest -q`: 30 passed.
 - `swift build`: passed.
 - `./scripts/build-macos-prototype.sh`: passed; wrote `.build/BetterNB.app`.
 - `go test ./...`: passed.
