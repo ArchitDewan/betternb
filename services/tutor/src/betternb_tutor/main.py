@@ -5,6 +5,7 @@ import uvicorn
 from openai import OpenAI
 
 from .api import create_app
+from .course_study import CourseSourceIndex, CourseStudyService
 from .knowledge import load_markdown_knowledge, load_or_build_repository
 from .orchestrator import TutorOrchestrator
 from .providers import OpenAIEmbeddingGateway, OpenAIModelGateway
@@ -24,12 +25,14 @@ def build_app():
         repository_root / ".build/tutor/derivatives-index.json",
         cache_key=f"{embedding_model}:{embeddings.dimensions}:title-section-v1",
     )
+    model = OpenAIModelGateway(client, model=model_name)
     orchestrator = TutorOrchestrator(
-        model=OpenAIModelGateway(client, model=model_name),
+        model=model,
         knowledge=knowledge,
         verifier=DerivativeVerifier(),
     )
-    return create_app(orchestrator)
+    course_study = CourseStudyService(CourseSourceIndex(embeddings), model)
+    return create_app(orchestrator, course_study=course_study)
 
 
 def run() -> None:

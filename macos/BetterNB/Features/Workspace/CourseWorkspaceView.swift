@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CourseWorkspaceView: View {
     @Binding var selection: WorkspaceDestination
+    var onContinuePractice: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
@@ -62,7 +63,7 @@ struct CourseWorkspaceView: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 14 * zoom) {
                 Button {
-                    selection = .practice
+                    onContinuePractice()
                 } label: {
                     Text("Continue")
                         .zFont(15, weight: .semibold, zoom: zoom)

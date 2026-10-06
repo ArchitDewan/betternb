@@ -1,1 +1,1 @@
-"""BetterNB guided mathematics tutor service."""
+"""Lemma guided mathematics tutor service."""

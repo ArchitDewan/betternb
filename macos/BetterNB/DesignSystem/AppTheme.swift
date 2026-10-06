@@ -17,6 +17,8 @@ enum AppTheme {
     static let critical = Color(red: 0.95, green: 0.42, blue: 0.42)
     static let verified = Color(red: 0.42, green: 0.78, blue: 0.56)
     static let caution = Color(red: 0.93, green: 0.72, blue: 0.34)
+    static let coach = Color(red: 0.49, green: 0.56, blue: 0.98)
+    static let coachFill = Color(red: 0.12, green: 0.14, blue: 0.22)
 
     // Compatibility names for study-specific emphasis. The shell remains monochrome.
     static let ink = primaryText
@@ -25,7 +27,8 @@ enum AppTheme {
 
     static let cornerRadius: CGFloat = 16
     static let compactCornerRadius: CGFloat = 10
-    static let pagePadding: CGFloat = 28
+    static let pagePadding: CGFloat = 36
     static let sidebarInset: CGFloat = 8
     static let composerMaxWidth: CGFloat = 768
+    static let practiceMeasure: CGFloat = 880
 }

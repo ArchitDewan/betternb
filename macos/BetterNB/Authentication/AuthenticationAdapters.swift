@@ -133,7 +133,7 @@ final class Auth0AuthenticationClient: AuthenticationClient {
         do {
             let credentials = try await startWebAuthentication()
             guard credentialsManager.store(credentials: credentials) else {
-                throw AuthenticationFailure.unavailable("BetterNB couldn’t securely store your session.")
+                throw AuthenticationFailure.unavailable("Lemma couldn’t securely store your session.")
             }
             return try mappedCredentials(credentials)
         } catch {

@@ -3,127 +3,241 @@ import UniformTypeIdentifiers
 
 struct PracticeSessionView: View {
     let tutor: TutorSessionStore
+    var onBackToStudy: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
     @State private var draft = ""
     @State private var attachment: MessageAttachment?
-    @State private var intent: TutorSubmitIntent = .automatic
+
+    private var sheet: PracticeWorksheet { tutor.worksheet }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if tutor.problem != nil, tutor.pendingTranscription == nil {
-                workingRail
-            }
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28 * zoom) {
-                        if let pending = tutor.pendingTranscription {
-                            transcriptionConfirmation(pending)
-                                .id("transcription")
-                        } else if tutor.entries.isEmpty, !tutor.isBusy {
-                            emptyState
-                        }
-
-                        ForEach(tutor.entries) { entry in
-                            TutorConversationBubble(entry: entry)
-                                .id(entry.id)
-                        }
-
-                        if tutor.isBusy {
-                            TutorThinkingRow()
-                                .id("thinking")
-                        }
-                    }
-                    .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
-                    .padding(.horizontal, AppTheme.pagePadding * zoom)
-                    .padding(.top, 26 * zoom)
-                    .padding(.bottom, 34 * zoom)
-                    .frame(maxWidth: .infinity)
+        HStack(alignment: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                if tutor.problem != nil, tutor.pendingTranscription == nil {
+                    worksheetBar
+                } else {
+                    studyNavigationBar
                 }
-                .scrollIndicators(.hidden)
-                .onChange(of: tutor.entries.count) { _, _ in
-                    if tutor.isBusy {
+
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if let pending = tutor.pendingTranscription {
+                                transcriptionConfirmation(pending)
+                                    .padding(.horizontal, AppTheme.pagePadding * zoom)
+                                    .padding(.top, 22 * zoom)
+                                    .id("transcription")
+                            } else if tutor.problem == nil, tutor.entries.isEmpty, !tutor.isBusy {
+                                emptyState
+                                    .padding(.horizontal, AppTheme.pagePadding * zoom)
+                                    .padding(.top, 26 * zoom)
+                            } else {
+                                worksheet
+                            }
+
+                            if tutor.isBusy {
+                                PracticeThinkingRow()
+                                    .padding(.horizontal, AppTheme.pagePadding * zoom)
+                                    .padding(.vertical, 14 * zoom)
+                                    .id("thinking")
+                            }
+                        }
+                        .padding(.bottom, 28 * zoom)
+                        .frame(maxWidth: AppTheme.practiceMeasure * zoom, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: tutor.entries.count) { _, _ in
+                        scroll(proxy)
+                    }
+                    .onChange(of: tutor.isBusy) { _, _ in
+                        scroll(proxy)
+                    }
+                    .onChange(of: tutor.pendingTranscription) { _, pending in
+                        guard pending != nil else { return }
                         withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo("thinking", anchor: .bottom)
-                        }
-                    } else if let last = tutor.entries.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+                            proxy.scrollTo("transcription", anchor: .center)
                         }
                     }
                 }
-                .onChange(of: tutor.isBusy) { _, busy in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        if busy {
-                            proxy.scrollTo("thinking", anchor: .bottom)
-                        } else if let last = tutor.entries.last {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
-                .onChange(of: tutor.pendingTranscription) { _, pending in
-                    guard pending != nil else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("transcription", anchor: .center)
-                    }
-                }
-            }
 
-            composer
+                composer
+            }
+            .frame(minWidth: 0, maxWidth: .infinity)
+
+            if showsInspectorRail {
+                Rectangle()
+                    .fill(AppTheme.stroke)
+                    .frame(width: 1)
+                PracticeInspectorPane(
+                    worksheet: sheet,
+                    nextHintLevel: tutor.nextHintLevel,
+                    canRevealSolution: tutor.canRevealSolution,
+                    solutionRevealed: tutor.solutionRevealed,
+                    isBusy: tutor.isBusy,
+                    onHint: { Task { _ = await tutor.requestHint() } },
+                    onReveal: { Task { _ = await tutor.revealSolution() } }
+                )
+                .frame(width: 244)
+            }
         }
         .background(AppTheme.canvas)
     }
 
+    private var showsInspectorRail: Bool {
+        tutor.problem != nil || !tutor.entries.isEmpty
+    }
+
+    private var worksheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let problem = sheet.problem {
+                problemBlock(problem)
+            }
+
+            ForEach(sheet.items) { item in
+                switch item {
+                case .step(let step):
+                    PracticeStepRow(step: step)
+                        .id(step.id)
+                case .note(let note):
+                    if note.title == "Solution" {
+                        PracticeSolutionBlock(text: note.text)
+                            .id(note.id)
+                    } else {
+                        annotationBlock(title: note.title, text: note.text, emphasized: note.emphasized)
+                            .id(note.id)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func problemBlock(_ problem: String) -> some View {
+        VStack(alignment: .leading, spacing: 10 * zoom) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Problem")
+                    .zFont(11, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
+                    .textCase(.uppercase)
+                Spacer(minLength: 8 * zoom)
+                if !sheet.steps.isEmpty, sheet.steps.allSatisfy({ $0.status == .correct }) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppTheme.verified)
+                        .font(.system(size: 13 * zoom))
+                }
+            }
+            TutorMathText(source: problem, fontSize: 18 * zoom)
+            if let source = sheet.inspector.sourceTitle {
+                Text(sourceLine(source))
+                    .zFont(12, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
+            }
+        }
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .padding(.vertical, 22 * zoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+    }
+
+    private func sourceLine(_ title: String) -> String {
+        if let section = sheet.inspector.sourceSection, !section.isEmpty {
+            return "\(title) · \(section)"
+        }
+        return title
+    }
+
+    private func annotationBlock(title: String, text: String, emphasized: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 8 * zoom) {
+            Text(title)
+                .zFont(11, weight: .semibold, zoom: zoom)
+                .foregroundStyle(AppTheme.tertiaryText)
+                .textCase(.uppercase)
+            TutorMathText(source: text, fontSize: emphasized ? 16 * zoom : 14 * zoom)
+        }
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .padding(.vertical, 16 * zoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+    }
+
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 14 * zoom) {
-            Text("Work a derivative like a notebook.")
-                .zFont(15, weight: .medium, zoom: zoom)
-                .foregroundStyle(AppTheme.secondaryText)
-            VStack(alignment: .leading, spacing: 8 * zoom) {
-                emptyStep("1", "Paste the problem, or add it from Problems.")
-                emptyStep("2", "Write one step, then send it as Check.")
+        VStack(alignment: .leading, spacing: 18 * zoom) {
+            Text("Work one problem as numbered steps.")
+                .zFont(20, weight: .medium, zoom: zoom)
+                .foregroundStyle(AppTheme.primaryText)
+                .tracking(0.2)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 12 * zoom) {
+                emptyStep("1", "Paste the problem, or open one from Problems.")
+                emptyStep("2", "Write the next line. Math is checked when you send.")
                 emptyStep("3", "Hints stay on a ladder. Reveal only if you ask.")
             }
-            Text("The tutor remembers this thread, checks written derivatives with SymPy, and keeps English out of the math.")
-                .zFont(13, zoom: zoom)
-                .foregroundStyle(AppTheme.tertiaryText)
         }
     }
 
     private func emptyStep(_ number: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10 * zoom) {
+        HStack(alignment: .firstTextBaseline, spacing: 12 * zoom) {
             Text(number)
-                .zFont(12, weight: .semibold, zoom: zoom)
+                .zFont(13, weight: .semibold, zoom: zoom)
                 .foregroundStyle(AppTheme.tertiaryText)
-                .frame(width: 16 * zoom, alignment: .leading)
+                .frame(width: 18 * zoom, alignment: .leading)
             Text(text)
-                .zFont(13, zoom: zoom)
+                .zFont(15, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
+                .tracking(0.2)
+                .lineSpacing(4 * zoom)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var workingRail: some View {
-        HStack(alignment: .center, spacing: 12 * zoom) {
-            VStack(alignment: .leading, spacing: 3 * zoom) {
-                Text("Working on")
-                    .zFont(11, weight: .semibold, zoom: zoom)
-                    .foregroundStyle(AppTheme.tertiaryText)
-                Text(tutor.problem ?? "")
-                    .zFont(13, zoom: zoom)
+    private var worksheetBar: some View {
+        HStack(spacing: 12 * zoom) {
+            backToStudyButton
+
+            VStack(alignment: .leading, spacing: 2 * zoom) {
+                Text("Practice · Problem")
+                    .zFont(12, weight: .medium, zoom: zoom)
                     .foregroundStyle(AppTheme.secondaryText)
-                    .lineLimit(2)
+                Text(sheet.inspector.totalCount == 0
+                    ? "No steps checked"
+                    : "\(sheet.inspector.checkedCount) / \(sheet.inspector.totalCount) checked")
+                    .zFont(11, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
             }
+            ProgressView(
+                value: Double(sheet.inspector.checkedCount),
+                total: Double(max(sheet.inspector.totalCount, 1))
+            )
+            .tint(AppTheme.verified)
+            .frame(maxWidth: 120 * zoom)
+
             Spacer(minLength: 8 * zoom)
-            Button("New problem") {
+
+            Button {
                 tutor.reset()
                 draft = ""
                 attachment = nil
-                intent = .automatic
+                onBackToStudy()
+            } label: {
+                Label("New problem", systemImage: "plus")
+                    .zFont(12, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.primaryText)
+                    .padding(.horizontal, 11 * zoom)
+                    .frame(height: 30 * zoom)
+                    .background(AppTheme.elevated, in: RoundedRectangle(cornerRadius: 7 * zoom))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7 * zoom)
+                            .stroke(AppTheme.strongStroke, lineWidth: 1)
+                    }
             }
             .buttonStyle(.plain)
-            .zFont(12, weight: .medium, zoom: zoom)
-            .foregroundStyle(AppTheme.secondaryText)
             .disabled(tutor.isBusy)
+            .opacity(tutor.isBusy ? 0.55 : 1)
         }
         .padding(.horizontal, AppTheme.pagePadding * zoom)
         .padding(.vertical, 10 * zoom)
@@ -131,6 +245,32 @@ struct PracticeSessionView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(AppTheme.stroke).frame(height: 1)
         }
+    }
+
+    private var studyNavigationBar: some View {
+        HStack {
+            backToStudyButton
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .frame(height: 42 * zoom)
+        .background(AppTheme.panel)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+    }
+
+    private var backToStudyButton: some View {
+        Button(action: onBackToStudy) {
+            Image(systemName: "chevron.left")
+                .zFont(11, weight: .semibold, zoom: zoom)
+                .foregroundStyle(AppTheme.secondaryText)
+                .frame(width: 26 * zoom, height: 26 * zoom)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to Study desk")
+        .help("Back to Study desk")
     }
 
     private var composer: some View {
@@ -141,29 +281,6 @@ struct PracticeSessionView: View {
                     .foregroundStyle(AppTheme.critical)
             }
 
-            if let guidance = tutor.nextGuidance {
-                Text(guidance)
-                    .zFont(12, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
-
-            if tutor.problem != nil, tutor.pendingTranscription == nil {
-                helpControls
-                intentPicker
-            }
-
-            if showsDraftPreview {
-                TutorMathText(source: draft, fontSize: 15 * zoom)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12 * zoom)
-                    .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous)
-                            .stroke(AppTheme.stroke, lineWidth: 1)
-                    }
-                    .accessibilityLabel("Draft math preview")
-            }
-
             PromptComposer(
                 draft: $draft,
                 attachment: $attachment,
@@ -171,14 +288,14 @@ struct PracticeSessionView: View {
                 allowedContentTypes: [.png, .jpeg],
                 attachmentDescription: "a PNG or JPEG image"
             ) {
-                sendDraft()
+                sendDraft(as: .automatic)
             }
             .disabled(tutor.pendingTranscription != nil)
             .opacity(tutor.pendingTranscription == nil ? 1 : 0.55)
             .allowsHitTesting(!tutor.isBusy)
         }
-        .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: AppTheme.practiceMeasure * zoom, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, AppTheme.pagePadding * zoom)
         .padding(.top, 10 * zoom)
         .padding(.bottom, 20 * zoom)
@@ -186,76 +303,9 @@ struct PracticeSessionView: View {
 
     private var composerPlaceholder: String {
         if tutor.problem == nil {
-            return "Paste a derivative problem"
+            return "Paste a problem, or write the first line"
         }
-        return resolvedIntent == .check ? "Write the next step to check" : "Ask about this problem"
-    }
-
-    private var showsDraftPreview: Bool {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.contains("\\") || trimmed.contains("^") || TutorMessageKind.looksLikeMathStep(trimmed)
-    }
-
-    private var resolvedIntent: TutorSubmitIntent {
-        if tutor.problem == nil { return .ask }
-        if intent != .automatic { return intent }
-        return TutorMessageKind.looksLikeMathStep(draft) ? .check : .ask
-    }
-
-    private var intentPicker: some View {
-        HStack(spacing: 8 * zoom) {
-            intentChip("Ask", selected: resolvedIntent == .ask) { intent = .ask }
-            intentChip("Check step", selected: resolvedIntent == .check) { intent = .check }
-        }
-        .disabled(tutor.isBusy)
-    }
-
-    private func intentChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .zFont(12, weight: .medium, zoom: zoom)
-                .foregroundStyle(selected ? AppTheme.primaryText : AppTheme.tertiaryText)
-                .padding(.horizontal, 10 * zoom)
-                .padding(.vertical, 5 * zoom)
-                .background(selected ? AppTheme.elevated : Color.clear, in: Capsule())
-                .overlay {
-                    Capsule().stroke(selected ? AppTheme.strongStroke : AppTheme.stroke, lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var helpControls: some View {
-        HStack(spacing: 10 * zoom) {
-            ForEach(1...3, id: \.self) { level in
-                let used = tutor.usedHintCount >= level
-                let current = tutor.nextHintLevel == level
-                Button {
-                    guard current else { return }
-                    Task { _ = await tutor.requestHint() }
-                } label: {
-                    Text("Hint \(level)")
-                        .underline(current)
-                        .foregroundStyle(used || current ? AppTheme.primaryText : AppTheme.tertiaryText)
-                }
-                .disabled(!current || tutor.isBusy)
-                .help(current ? "Request hint \(level)" : used ? "Hint \(level) already shown" : "Hints unlock in order")
-            }
-
-            if tutor.canRevealSolution {
-                Button {
-                    Task { _ = await tutor.revealSolution() }
-                } label: {
-                    Text("Reveal")
-                }
-                .help("Explicitly request the complete solution")
-            }
-        }
-        .buttonStyle(.plain)
-        .zFont(12, weight: .medium, zoom: zoom)
-        .foregroundStyle(AppTheme.secondaryText)
-        .disabled(tutor.isBusy)
+        return "Write the next step, or ask a question"
     }
 
     private func transcriptionConfirmation(_ pending: PendingMathTranscription) -> some View {
@@ -327,10 +377,9 @@ struct PracticeSessionView: View {
         }
     }
 
-    private func sendDraft() {
+    private func sendDraft(as submittedIntent: TutorSubmitIntent) {
         let submittedDraft = draft
         let submittedAttachment = attachment
-        let submittedIntent = resolvedIntent
         draft = ""
         attachment = nil
         Task {
@@ -340,143 +389,356 @@ struct PracticeSessionView: View {
             }
         }
     }
+
+    private func scroll(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            if tutor.isBusy {
+                proxy.scrollTo("thinking", anchor: .bottom)
+            } else if let solution = sheet.latestSolution {
+                proxy.scrollTo(solution.id, anchor: .top)
+            } else if let last = sheet.items.last?.id {
+                proxy.scrollTo(last, anchor: .bottom)
+            }
+        }
+    }
 }
 
-private struct TutorThinkingRow: View {
+private struct PracticeStepRow: View {
+    let step: PracticeWorksheetStep
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10 * zoom) {
-            PracticeSpeakerMark(role: .tutor)
+        VStack(alignment: .leading, spacing: 8 * zoom) {
+            HStack(alignment: .top, spacing: 14 * zoom) {
+                Text("Step \(step.number)")
+                    .zFont(12, weight: .medium, zoom: zoom)
+                    .foregroundStyle(AppTheme.tertiaryText)
+                    .frame(width: 58 * zoom, alignment: .leading)
+
+                TutorMathText(source: step.text, fontSize: 16 * zoom, compact: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                statusMark
+            }
+
+            if step.isFocus, let feedback = step.feedback {
+                VStack(alignment: .leading, spacing: 6 * zoom) {
+                    Text(step.status == .incorrect ? "First break" : "Check")
+                        .zFont(11, weight: .semibold, zoom: zoom)
+                        .foregroundStyle(AppTheme.coach)
+                        .textCase(.uppercase)
+                    TutorMathText(source: feedback, fontSize: 13 * zoom, color: AppTheme.primaryText, compact: true)
+                }
+                .padding(12 * zoom)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.coachFill, in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous)
+                        .stroke(AppTheme.coach.opacity(0.35), lineWidth: 1)
+                }
+                .padding(.leading, 72 * zoom)
+            }
+        }
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .padding(.vertical, 16 * zoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(step.isFocus && step.status == .incorrect ? AppTheme.critical.opacity(0.06) : Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(step.number), \(statusLabel)")
+        .accessibilityValue(step.text)
+    }
+
+    @ViewBuilder
+    private var statusMark: some View {
+        switch step.status {
+        case .correct:
+            Image(systemName: "checkmark")
+                .font(.system(size: 12 * zoom, weight: .semibold))
+                .foregroundStyle(AppTheme.verified)
+        case .incorrect:
+            Image(systemName: "xmark")
+                .font(.system(size: 12 * zoom, weight: .semibold))
+                .foregroundStyle(AppTheme.critical)
+        case .pending:
+            ProgressView()
+                .controlSize(.mini)
+        case .unchecked:
+            Circle()
+                .stroke(AppTheme.stroke, lineWidth: 1)
+                .frame(width: 12 * zoom, height: 12 * zoom)
+        }
+    }
+
+    private var statusLabel: String {
+        switch step.status {
+        case .correct: "correct"
+        case .incorrect: "incorrect"
+        case .pending: "checking"
+        case .unchecked: "not checked"
+        }
+    }
+}
+
+private struct PracticeSolutionBlock: View {
+    let text: String
+    @Environment(\.workspaceZoom) private var zoom
+
+    private var layout: RevealedSolutionLayout { RevealedSolutionLayout(text) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18 * zoom) {
             HStack(spacing: 8 * zoom) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Thinking")
-                    .zFont(13, weight: .medium, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
+                Image(systemName: "checkmark.seal.fill")
+                    .zFont(13, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.verified)
+                Text("Full solution")
+                    .zFont(12, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.primaryText)
+                    .textCase(.uppercase)
+            }
+
+            if let introduction = layout.introduction {
+                TutorMathText(source: introduction, fontSize: 14 * zoom)
+            }
+
+            if layout.steps.isEmpty {
+                if layout.introduction == nil {
+                    TutorMathText(source: text, fontSize: 15 * zoom)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(layout.steps) { step in
+                        HStack(alignment: .top, spacing: 14 * zoom) {
+                            Text("\(step.number)")
+                                .zFont(12, weight: .semibold, zoom: zoom)
+                                .foregroundStyle(AppTheme.primaryText)
+                                .frame(width: 26 * zoom, height: 26 * zoom)
+                                .background(AppTheme.elevated, in: Circle())
+                                .overlay {
+                                    Circle().stroke(AppTheme.strongStroke, lineWidth: 1)
+                                }
+
+                            VStack(alignment: .leading, spacing: 9 * zoom) {
+                                if !step.textWithoutBoxedAnswer.isEmpty {
+                                    TutorMathText(source: step.textWithoutBoxedAnswer, fontSize: 15 * zoom)
+                                }
+                                if let answer = step.boxedAnswer {
+                                    TutorMathText(source: answer, fontSize: 16 * zoom)
+                                        .padding(.horizontal, 12 * zoom)
+                                        .padding(.vertical, 9 * zoom)
+                                        .background(
+                                            AppTheme.elevated,
+                                            in: RoundedRectangle(cornerRadius: 8 * zoom)
+                                        )
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 8 * zoom)
+                                                .stroke(AppTheme.verified.opacity(0.55), lineWidth: 1)
+                                        }
+                                        .accessibilityLabel("Final answer, \(answer)")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.vertical, 12 * zoom)
+                        .overlay(alignment: .bottom) {
+                            if step.id != layout.steps.last?.id {
+                                Rectangle()
+                                    .fill(AppTheme.stroke)
+                                    .frame(height: 1)
+                                    .padding(.leading, 40 * zoom)
+                            }
+                        }
+                    }
+                }
             }
         }
-        .padding(.vertical, 4 * zoom)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Tutor is thinking")
+        .padding(.horizontal, AppTheme.pagePadding * zoom)
+        .padding(.vertical, 18 * zoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.verified.opacity(0.035))
+        .overlay(alignment: .top) {
+            Rectangle().fill(AppTheme.stroke).frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Full solution")
     }
 }
 
-private struct PracticeSpeakerMark: View {
-    let role: TutorConversationEntry.Role
-    @Environment(\.workspaceZoom) private var zoom
+private struct PracticeInspectorPane: View {
+    let worksheet: PracticeWorksheet
+    let nextHintLevel: Int?
+    let canRevealSolution: Bool
+    let solutionRevealed: Bool
+    let isBusy: Bool
+    let onHint: () -> Void
+    let onReveal: () -> Void
 
     var body: some View {
-        Image(systemName: role == .student ? "person.fill" : "function")
-            .font(.system(size: 10 * zoom, weight: .semibold))
-            .foregroundStyle(role == .student ? AppTheme.secondaryText : AppTheme.primaryText)
-            .frame(width: 22 * zoom, height: 22 * zoom)
-            .background(
-                role == .student ? AppTheme.paper : AppTheme.elevated,
-                in: Circle()
-            )
-            .overlay {
-                Circle()
-                    .stroke(AppTheme.stroke, lineWidth: 1)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                guidanceActions
+
+                Divider()
+                    .overlay(AppTheme.stroke)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Step check")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppTheme.tertiaryText)
+                        .textCase(.uppercase)
+                    Text(worksheet.inspector.totalCount == 0
+                        ? "—"
+                        : "\(worksheet.inspector.checkedCount) / \(worksheet.inspector.totalCount)")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(AppTheme.primaryText)
+                    ProgressView(
+                        value: Double(worksheet.inspector.checkedCount),
+                        total: Double(max(worksheet.inspector.totalCount, 1))
+                    )
+                    .tint(verdictColor)
+                    Text(worksheet.inspector.totalCount == 0 ? "No steps checked" : "Checked so far")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppTheme.tertiaryText)
+                }
+
+                if worksheet.inspector.note == nil, worksheet.inspector.verdict == nil {
+                    Text("A checked step will show the verdict here.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppTheme.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let verdict = worksheet.inspector.verdict {
+                    inspectorField("Verdict", verdict)
+                }
+                if let error = worksheet.inspector.errorType {
+                    inspectorField("Error type", error)
+                }
+                if let title = worksheet.inspector.sourceTitle {
+                    let detail = [title, worksheet.inspector.sourceSection].compactMap { $0 }.joined(separator: " · ")
+                    inspectorField("Course source", detail)
+                }
+                if let note = worksheet.inspector.note {
+                    inspectorField(
+                        worksheet.inspector.noteCaption.isEmpty ? "Summary" : worksheet.inspector.noteCaption,
+                        note
+                    )
+                }
             }
-            .accessibilityHidden(true)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollIndicators(.hidden)
+        .background(AppTheme.panel)
+        .environment(\.workspaceZoom, 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Guidance and step check")
     }
-}
 
-private struct TutorConversationBubble: View {
-    let entry: TutorConversationEntry
-    @Environment(\.workspaceZoom) private var zoom
+    private var guidanceActions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Guidance")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.tertiaryText)
+                .textCase(.uppercase)
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 10 * zoom) {
-            if entry.role == .tutor {
-                PracticeSpeakerMark(role: .tutor)
+            if solutionRevealed {
+                Label("Solution revealed", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppTheme.verified)
+                    .padding(.vertical, 4)
+            } else {
+                Text("Stay moving without leaving the worksheet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let level = nextHintLevel {
+                    railButton(
+                        "Hint \(level)",
+                        systemImage: "lightbulb",
+                        primary: true,
+                        action: onHint
+                    )
+                }
+
+                if canRevealSolution {
+                    railButton(
+                        "Reveal solution",
+                        systemImage: "eye",
+                        primary: false,
+                        action: onReveal
+                    )
+                }
             }
+        }
+    }
 
-            content
-                .frame(
-                    maxWidth: (entry.role == .tutor ? AppTheme.composerMaxWidth : 560) * zoom,
-                    alignment: entry.role == .student ? .trailing : .leading
+    private func railButton(
+        _ title: String,
+        systemImage: String,
+        primary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(primary ? AppTheme.inverseText : AppTheme.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 11)
+                .frame(height: 34)
+                .background(
+                    primary ? AppTheme.primaryText : AppTheme.elevated,
+                    in: RoundedRectangle(cornerRadius: 8)
                 )
-
-            if entry.role == .student {
-                PracticeSpeakerMark(role: .student)
-            }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(primary ? Color.clear : AppTheme.strongStroke, lineWidth: 1)
+                }
+                .contentShape(Rectangle())
         }
-        .frame(
-            maxWidth: .infinity,
-            alignment: entry.role == .student ? .trailing : .leading
-        )
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.55 : 1)
+    }
+
+    private var verdictColor: Color {
+        switch worksheet.inspector.verdict {
+        case "Correct": AppTheme.verified
+        case "Incorrect": AppTheme.critical
+        default: AppTheme.tertiaryText
+        }
+    }
+
+    private func inspectorField(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.tertiaryText)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 13))
+                .foregroundStyle(AppTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct PracticeThinkingRow: View {
+    @Environment(\.workspaceZoom) private var zoom
+
+    var body: some View {
+        HStack(spacing: 10 * zoom) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Checking")
+                .zFont(13, weight: .medium, zoom: zoom)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilitySpeaker)
-        .accessibilityValue(entry.text)
-    }
-
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 6 * zoom) {
-            if !entry.kind.caption.isEmpty {
-                Text(entry.kind.caption)
-                    .zFont(11, weight: .semibold, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
-
-            if entry.role == .tutor, let status = entry.verificationStatus, entry.assessment != "not_assessed" {
-                verificationBadge(status)
-            }
-
-            TutorMathText(source: entry.text, fontSize: entry.kind == .solution ? 16 * zoom : 15 * zoom)
-                .lineSpacing(5)
-        }
-        .padding(entry.role == .student ? 12 * zoom : entry.kind == .solution ? 4 * zoom : 0)
-        .background(
-            entry.role == .student ? AppTheme.paper : Color.clear,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay {
-            if entry.role == .student {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(AppTheme.stroke, lineWidth: 1)
-            }
-        }
-    }
-
-    private var accessibilitySpeaker: String {
-        switch (entry.role, entry.kind) {
-        case (.student, .problem):
-            "You, Problem"
-        case (.student, .step(let number)):
-            "You, Step \(number)"
-        case (.student, _):
-            "You"
-        case (.tutor, .hint(let level)):
-            "Tutor, Hint \(level)"
-        case (.tutor, .solution):
-            "Tutor, Solution"
-        case (.tutor, .problem), (.tutor, .step), (.tutor, .message):
-            "Tutor"
-        }
-    }
-
-    private func verificationBadge(_ status: TutorVerificationStatus) -> some View {
-        let label: String
-        let color: Color
-        let symbol: String
-        switch status {
-        case .verified:
-            label = "Symbolically verified"
-            color = AppTheme.verified
-            symbol = "checkmark.seal"
-        case .modelJudged:
-            label = "Agent assessment · not verified"
-            color = AppTheme.caution
-            symbol = "sparkles"
-        case .inconclusive:
-            label = "Verification inconclusive"
-            color = AppTheme.secondaryText
-            symbol = "questionmark.circle"
-        }
-        return Label(label, systemImage: symbol)
-            .zFont(11, weight: .semibold, zoom: zoom)
-            .foregroundStyle(color)
+        .accessibilityLabel("Tutor is checking")
     }
 }

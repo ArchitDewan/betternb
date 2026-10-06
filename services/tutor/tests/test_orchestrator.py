@@ -1,7 +1,7 @@
 from betternb_tutor.contracts import TutorAction, TutorTurnRequest, VerificationStatus
 from betternb_tutor.knowledge import KnowledgeChunk, SearchResult
 from betternb_tutor.orchestrator import TutorOrchestrator
-from betternb_tutor.providers import ModelAssessment
+from betternb_tutor.providers import ModelAssessment, _instructions_for
 from betternb_tutor.verification import VerificationResult
 
 
@@ -177,6 +177,31 @@ def test_retrieval_query_uses_the_problem_not_student_steps() -> None:
 
     assert knowledge.queries == ["Differentiate f(x) = x^2"]
     assert response.sources == []
+
+
+def test_check_step_instructions_require_a_grade_when_the_solver_cannot_verify() -> None:
+    text = _instructions_for(TutorAction.CHECK_STEP)
+    assert "inconclusive" in text.lower()
+    assert "correct or incorrect" in text.lower()
+    assert "never mention the solver" in text.lower()
+
+
+def test_latex_substitution_is_a_check_and_includes_a_summary() -> None:
+    response = make_orchestrator().respond(
+        TutorTurnRequest(
+            session_id="session-1",
+            problem=r"\int \sin 2x / \cos^2 2x \, dx",
+            attempt_steps=[r"u = \cos 2x"],
+            action=TutorAction.CHECK_STEP,
+            hint_level=0,
+            solution_revealed=False,
+        )
+    )
+
+    assert response.verification_status is VerificationStatus.MODEL_JUDGED
+    assert response.assessment == "incorrect"
+    assert response.summary
+    assert "inner derivative" in response.summary.lower() or "inner derivative" in response.message.lower()
 
 
 def test_informal_help_request_is_conversation_not_a_solver_check() -> None:

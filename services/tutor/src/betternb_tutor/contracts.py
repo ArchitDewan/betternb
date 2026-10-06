@@ -54,6 +54,7 @@ class TutorTurnResponse(BaseModel):
     capability: str
     assessment: str
     message: str
+    summary: str | None = None
     error_category: str | None = None
     verification_status: VerificationStatus
     sources: list[SourceReference]
@@ -65,3 +66,36 @@ class TutorTurnResponse(BaseModel):
 class TranscriptionResponse(BaseModel):
     transcription: str
     requires_confirmation: bool = True
+
+
+class CourseSourceResponse(BaseModel):
+    source_id: str
+    filename: str
+    page_count: int
+    chunk_count: int
+
+
+class CourseQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=20_000)
+
+
+class CourseAnswerResponse(BaseModel):
+    answer: str
+    sources: list[SourceReference]
+
+
+class GenerateProblemsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int = Field(default=3, ge=1, le=8)
+
+
+class GeneratedProblemResponse(BaseModel):
+    prompt: str
+    sources: list[SourceReference]
+
+
+class GeneratedProblemsResponse(BaseModel):
+    problems: list[GeneratedProblemResponse]
