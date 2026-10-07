@@ -3,10 +3,7 @@ import SwiftUI
 struct WorkspaceShellView: View {
     @State private var selection: WorkspaceDestination = .study
     @State private var studyRoute: StudyRoute = .desk
-    @State private var conversations = WorkspaceConversationStore(
-        repository: InMemoryChannelMessageRepository()
-    )
-    @State private var tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
+    @State private var threads = StudyThreadStore()
     @State private var courseSources = CourseSourceStore(
         courseID: "calculus-1",
         client: AppDependencies.makeCourseStudyClient()
@@ -14,12 +11,21 @@ struct WorkspaceShellView: View {
     @State private var problemSet = ProblemSetStore()
     @State private var isSearchPresented = false
     @State private var isSourcesPresented = false
+    @State private var isAllThreadsPresented = false
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
         GeometryReader { geometry in
             NavigationSplitView {
-                SidebarView(selection: $selection)
+                SidebarView(
+                    selection: $selection,
+                    recentThreads: threads.recent,
+                    totalThreadCount: threads.all.count,
+                    activeThreadID: studyRoute == .desk ? nil : threads.activeID,
+                    onOpenStudyDesk: showStudyDesk,
+                    onOpenThread: openThread,
+                    onShowAllThreads: { isAllThreadsPresented = true }
+                )
             } detail: {
                 VStack(spacing: 0) {
                     WorkspaceTopBar(destination: selection) {
@@ -29,23 +35,32 @@ struct WorkspaceShellView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(AppTheme.canvas)
+                .lemmaGlass(material: .underWindowBackground)
             }
             .navigationSplitViewStyle(.balanced)
+            .toolbarBackground(.hidden, for: .windowToolbar)
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-            .tint(AppTheme.ink)
+            .tint(LemmaColors.accent)
         }
         .sheet(isPresented: $isSearchPresented) {
             WorkspaceSearchView { destination in
-                selection = destination
+                if destination == .study {
+                    showStudyDesk()
+                } else {
+                    selection = destination
+                }
                 isSearchPresented = false
             }
         }
         .sheet(isPresented: $isSourcesPresented) {
-            CourseSourcesView(store: courseSources) { generated in
-                generated.reversed().forEach { problem in
-                    problemSet.add(problem.prompt, sources: problem.sources)
-                }
+            CourseSourcesView(store: courseSources) { selected in
+                problemSet.addGenerated(selected)
+            }
+        }
+        .sheet(isPresented: $isAllThreadsPresented) {
+            AllStudyThreadsView(threads: threads.all) { id in
+                openThread(id)
+                isAllThreadsPresented = false
             }
         }
     }
@@ -55,19 +70,14 @@ struct WorkspaceShellView: View {
         switch selection {
         case .home:
             WorkspaceHomeView {
-                studyRoute = .desk
-                selection = .study
+                showStudyDesk()
             }
         case .study:
             studyView
         case .problems:
             ProblemSetView(store: problemSet) { item in
                 problemSet.markOpened(item.id)
-                studyRoute = .worksheet
-                selection = .study
-                Task {
-                    _ = await tutor.beginProblem(item.prompt)
-                }
+                startProblem(item.prompt, attachment: nil)
             }
         default:
             WorkspacePlaceholderView(destination: selection)
@@ -79,51 +89,128 @@ struct WorkspaceShellView: View {
         switch studyRoute {
         case .desk:
             StudyDeskView(
-                tutor: tutor,
                 sourceCount: courseSources.sources.count,
-                onContinue: { studyRoute = .worksheet },
+                problemCount: problemSet.items.count,
+                recentThreads: threads.recent,
+                totalThreadCount: threads.all.count,
                 onManageSources: { isSourcesPresented = true },
+                onOpenProblems: { selection = .problems },
+                onOpenReview: { selection = .review },
+                onOpenFormulaSheet: { selection = .formulaSheet },
+                onOpenThread: openThread,
+                onShowAllThreads: { isAllThreadsPresented = true },
                 onAskCourse: askCourse,
                 onStartProblem: startProblem
             )
         case .conversation:
-            ChannelConversationView(
-                destination: .study,
-                conversations: conversations,
-                onBackToStudy: { studyRoute = .desk }
-            )
+            if let conversations = threads.activeConversations {
+                ChannelConversationView(
+                    destination: .study,
+                    conversations: conversations,
+                    topicTitle: threads.activeTitle ?? "A calculus idea",
+                    onBackToStudy: showStudyDesk,
+                    onAskCourse: { question in
+                        await sendCourseQuestion(question, in: conversations)
+                    }
+                )
+                .id(threads.activeID)
+            }
         case .worksheet:
-            PracticeSessionView(tutor: tutor) {
-                studyRoute = .desk
+            if let tutor = threads.activeTutor {
+                PracticeSessionView(tutor: tutor) {
+                    showStudyDesk()
+                }
+                .id(threads.activeID)
             }
         }
     }
 
     private func askCourse(_ question: String) {
+        let conversations = WorkspaceConversationStore(repository: InMemoryChannelMessageRepository())
+        threads.startCourse(question: question, conversations: conversations)
         studyRoute = .conversation
+        selection = .study
         Task {
-            guard await conversations.send(question, in: .study) else { return }
-            if let answer = await courseSources.answer(question) {
-                conversations.appendTutorReply(answer.answer, sources: answer.sources, in: .study)
-            } else {
-                conversations.appendTutorReply(
-                    courseSources.errorMessage ?? "Add a course PDF so I can answer from your material.",
-                    in: .study
-                )
-            }
+            _ = await sendCourseQuestion(question, in: conversations)
         }
     }
 
+    private func sendCourseQuestion(_ question: String, in conversations: WorkspaceConversationStore) async -> Bool {
+        guard await conversations.send(question, in: .study) else { return false }
+        if let answer = await courseSources.answer(question) {
+            conversations.appendTutorReply(answer.answer, sources: answer.sources, in: .study)
+        } else {
+            conversations.appendTutorReply(
+                courseSources.errorMessage ?? "Add a course PDF so I can answer from your material.",
+                in: .study
+            )
+        }
+        return true
+    }
+
     private func startProblem(_ prompt: String, attachment: MessageAttachment?) {
+        let tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
+        threads.startPractice(prompt: prompt.isEmpty ? "Image problem" : prompt, tutor: tutor)
         studyRoute = .worksheet
+        selection = .study
         Task {
             if let attachment {
-                tutor.reset()
                 _ = await tutor.submit(prompt, attachment: attachment, intent: .ask)
             } else {
                 _ = await tutor.beginProblem(prompt)
             }
         }
+    }
+
+    private func openThread(_ id: UUID) {
+        guard let kind = threads.activate(id) else { return }
+        studyRoute = kind == .practice ? .worksheet : .conversation
+        selection = .study
+    }
+
+    private func showStudyDesk() {
+        threads.showDesk()
+        studyRoute = .desk
+        selection = .study
+    }
+}
+
+private struct AllStudyThreadsView: View {
+    let threads: [StudyThreadSummary]
+    let onSelect: (UUID) -> Void
+    @Environment(\.workspaceZoom) private var zoom
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14 * zoom) {
+            HStack {
+                Text("All study threads")
+                    .zFont(18, weight: .semibold, zoom: zoom)
+                    .foregroundStyle(AppTheme.primaryText)
+                Spacer()
+                Button("Close", action: dismiss.callAsFunction)
+            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4 * zoom) {
+                    ForEach(threads) { thread in
+                        Button {
+                            onSelect(thread.id)
+                        } label: {
+                            Label(thread.title, systemImage: "bubble.left")
+                                .zFont(13, zoom: zoom)
+                                .foregroundStyle(AppTheme.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10 * zoom)
+                                .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 8 * zoom))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(20 * zoom)
+        .frame(width: 420 * zoom, height: 420 * zoom)
+        .background(AppTheme.panel)
     }
 }
 
@@ -192,19 +279,23 @@ private struct WorkspacePlaceholderView: View {
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12 * zoom) {
+        VStack(alignment: .leading, spacing: 22 * zoom) {
+            Text("Study tool")
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.textTertiary)
             Text(destination.title)
-                .zFont(28, weight: .semibold, zoom: zoom)
-                .foregroundStyle(AppTheme.primaryText)
-
-            Text("This surface is ready for the next design pass.")
-                .zFont(20, zoom: zoom)
-                .foregroundStyle(AppTheme.secondaryText)
+                .font(LemmaTypography.pageTitle(zoom))
+                .foregroundStyle(LemmaColors.textPrimary)
+            Text("This part of your learning workspace is coming soon.")
+                .font(LemmaTypography.body(zoom))
+                .foregroundStyle(LemmaColors.textSecondary)
+            LemmaKnowledgeMotif()
+                .padding(.top, 12 * zoom)
         }
         .frame(maxWidth: 820 * zoom, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, AppTheme.pagePadding * zoom)
-        .padding(.top, 22 * zoom)
-        .background(AppTheme.canvas)
+        .padding(.top, 44 * zoom)
+        .background(Color.clear)
     }
 }

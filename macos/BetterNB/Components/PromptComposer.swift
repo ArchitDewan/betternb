@@ -9,6 +9,7 @@ struct PromptComposer: View {
     var allowedContentTypes: [UTType] = [.png, .jpeg, .pdf]
     var attachmentDescription = "PNG, JPEG, or PDF"
     var expanded = false
+    var focusRequest: UUID? = nil
     var onSend: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,16 +56,18 @@ struct PromptComposer: View {
             }
         }
         .padding(8 * zoom)
-        .background(AppTheme.elevated, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+        .lemmaComposerGlass(cornerRadius: LemmaRadius.composer * zoom)
         .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
-                .stroke(isComposerFocused ? AppTheme.strongStroke : AppTheme.stroke, lineWidth: 1)
+            RoundedRectangle(cornerRadius: LemmaRadius.composer * zoom, style: .continuous)
+                .stroke(LemmaColors.hairline, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: attachment?.id)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: attachmentError)
         .onPasteCommand(of: [.image, .png, .jpeg, .tiff]) { _ in
             _ = pasteImageFromClipboard()
+        }
+        .onChange(of: focusRequest) { _, request in
+            if request != nil { isComposerFocused = true }
         }
         .fileImporter(
             isPresented: $isImporterPresented,
@@ -96,7 +99,7 @@ struct PromptComposer: View {
                 sendButton
             }
         }
-        .frame(height: 108 * zoom, alignment: .topLeading)
+        .frame(height: 82 * zoom, alignment: .topLeading)
     }
 
     private var addButton: some View {
@@ -116,7 +119,7 @@ struct PromptComposer: View {
             .foregroundStyle(AppTheme.secondaryText)
             .frame(width: 34 * zoom, height: 34 * zoom)
             .background(
-                isAddHovering ? AppTheme.elevatedHover : Color.clear,
+                isAddHovering ? LemmaColors.surfaceHover : Color.clear,
                 in: Circle()
             )
             .contentShape(Circle())
@@ -130,31 +133,40 @@ struct PromptComposer: View {
     }
 
     private var draftField: some View {
-        TextField(placeholder, text: $draft, axis: .vertical)
-            .textFieldStyle(.plain)
-            .zFont(15, zoom: zoom)
-            .lineLimit(1...6)
-            .foregroundStyle(AppTheme.primaryText)
-            .padding(.vertical, 7 * zoom)
-            .frame(minHeight: 34 * zoom, alignment: .leading)
-            .focused($isComposerFocused)
-            .submitLabel(.send)
-            .onSubmit {
-                if canSend {
-                    onSend()
+        ZStack(alignment: .leading) {
+            if draft.isEmpty {
+                Text(placeholder)
+                    .foregroundStyle(LemmaColors.textSecondary)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            TextField("", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .foregroundStyle(AppTheme.primaryText)
+                .lineLimit(1...6)
+                .focused($isComposerFocused)
+                .submitLabel(.send)
+                .accessibilityLabel(placeholder)
+                .onSubmit {
+                    if canSend {
+                        onSend()
+                    }
                 }
-            }
-            .onKeyPress(.init("v"), phases: .down) { keyPress in
-                guard keyPress.modifiers.contains(.command) else { return .ignored }
-                return pasteImageFromClipboard() ? .handled : .ignored
-            }
+                .onKeyPress(.init("v"), phases: .down) { keyPress in
+                    guard keyPress.modifiers.contains(.command) else { return .ignored }
+                    return pasteImageFromClipboard() ? .handled : .ignored
+                }
+        }
+        .zFont(14, zoom: zoom)
+        .padding(.vertical, 7 * zoom)
+        .frame(minHeight: 34 * zoom, alignment: .leading)
     }
 
     private var sendButton: some View {
         Button(action: onSend) {
             Image(systemName: "arrow.up")
                 .zFont(12, weight: .bold, zoom: zoom)
-                .foregroundStyle(canSend ? AppTheme.inverseText : AppTheme.tertiaryText)
+                .foregroundStyle(canSend ? LemmaColors.onAccent : LemmaColors.textTertiary)
                 .frame(width: 34 * zoom, height: 34 * zoom)
                 .background(sendButtonBackground, in: Circle())
                 .contentShape(Circle())
@@ -173,7 +185,7 @@ struct PromptComposer: View {
 
     private var sendButtonBackground: Color {
         guard canSend else { return AppTheme.elevatedHover }
-        return isSendHovering ? AppTheme.secondaryText : AppTheme.primaryText
+        return isSendHovering ? LemmaColors.textSecondary : LemmaColors.textPrimary
     }
 
     private func attachmentChip(_ attachment: MessageAttachment) -> some View {

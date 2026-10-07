@@ -4,37 +4,48 @@ struct WorkspaceTopBar: View {
     let destination: WorkspaceDestination
     var onSearch: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
+    @State private var isSearchHovering = false
 
     var body: some View {
         HStack(spacing: 8 * zoom) {
             Text(barTitle)
-                .foregroundStyle(AppTheme.primaryText)
+                .font(.system(size: 13 * zoom, weight: .medium))
+                .foregroundStyle(LemmaColors.textPrimary)
 
-            Text("Calculus I")
-                .zFont(12, zoom: zoom)
-                .foregroundStyle(AppTheme.tertiaryText)
+            if destination != .home {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8 * zoom, weight: .semibold))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                Text("Calculus I")
+                    .font(.system(size: 12 * zoom))
+                    .foregroundStyle(LemmaColors.textTertiary)
+            }
 
             Spacer(minLength: 12 * zoom)
 
             Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
                     .zFont(12, weight: .medium, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
+                    .foregroundStyle(isSearchHovering ? LemmaColors.textPrimary : LemmaColors.textSecondary)
                     .frame(width: 28 * zoom, height: 28 * zoom)
+                    .background(
+                        isSearchHovering ? LemmaColors.surfaceHover : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6 * zoom, style: .continuous)
+                    )
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { isSearchHovering = $0 }
             .keyboardShortcut("k", modifiers: .command)
             .accessibilityLabel("Search workspace")
             .help("Search workspace (⌘K)")
         }
-        .zFont(13, weight: .medium, zoom: zoom)
         .padding(.horizontal, 20 * zoom)
-        .frame(height: 44 * zoom)
-        .background(AppTheme.canvas)
+        .frame(height: 40 * zoom)
+        .background(Color.clear)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(AppTheme.stroke)
+                .fill(LemmaColors.hairline)
                 .frame(height: 1)
         }
     }

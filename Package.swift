@@ -22,7 +22,10 @@ let package = Package(
                 .product(name: "SwiftMath", package: "SwiftMath"),
             ],
             path: "macos/BetterNB",
-            exclude: ["Resources"]
+            exclude: ["Resources"],
+            linkerSettings: [
+                .linkedFramework("Collaboration"),
+            ]
         ),
         .testTarget(
             name: "BetterNBTests",

@@ -35,6 +35,87 @@ private actor RecordingTutorClient: TutorClient {
 }
 
 struct TutorSessionTests {
+    @Test @MainActor
+    func studyThreadsKeepIndependentSessionsAndThreeRecentShortcuts() async {
+        let client = RecordingTutorClient()
+        let threads = StudyThreadStore()
+        let firstTutor = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        let first = threads.startPractice(
+            prompt: #"Determine whether \(\lim_{z\to0}\overline z/z\) exists."#,
+            tutor: firstTutor
+        )
+        #expect(await firstTutor.beginProblem(#"Determine whether \(\lim_{z\to0}\overline z/z\) exists."#))
+        firstTutor.composerDraft = "I think the limit depends on direction"
+
+        for prompt in ["Find all fourth roots of i", "Differentiate x^2", "Integrate x^2"] {
+            _ = threads.startPractice(prompt: prompt, tutor: TutorSessionStore(client: client))
+        }
+
+        #expect(threads.all.count == 4)
+        #expect(threads.recent.count == 3)
+        #expect(!threads.recent.contains { $0.id == first })
+        let originalOrder = threads.all.map(\.id)
+        #expect(threads.activate(first) == .practice)
+        #expect(threads.activeTutor === firstTutor)
+        #expect(firstTutor.entries.count == 2)
+        #expect(firstTutor.composerDraft == "I think the limit depends on direction")
+        #expect(threads.all.map(\.id) == originalOrder)
+        #expect(threads.recent.map(\.id) == Array(originalOrder.prefix(3)))
+        #expect(threads.all.last?.title == "Complex limit at z → 0")
+        #expect(threads.recent.map(\.title) == ["Integrate x²", "Differentiate x²", "Fourth roots of i"])
+    }
+
+    @Test @MainActor
+    func courseQuestionThreadRemainsSeparateFromPractice() async {
+        let threads = StudyThreadStore()
+        let conversation = WorkspaceConversationStore(repository: InMemoryChannelMessageRepository())
+        let courseID = threads.startCourse(question: "Explain the chain rule", conversations: conversation)
+        #expect(await conversation.send("Explain the chain rule", in: .study))
+        _ = threads.startPractice(prompt: "Differentiate x^2", tutor: TutorSessionStore(client: RecordingTutorClient()))
+
+        #expect(threads.activate(courseID) == .courseQuestion)
+        #expect(threads.activeConversations === conversation)
+        #expect(conversation.messages(in: .study).count == 1)
+        #expect(threads.recent.first?.title == "Differentiate x²")
+        #expect(threads.all.last?.title == "Explain the chain rule")
+    }
+
+    @Test
+    func studyThreadTitlesUseQuestionDetailsInsteadOfGenericCategories() {
+        #expect(StudyThreadTitle.forPrompt("5 * 5", kind: .practice) == "5 × 5")
+        #expect(StudyThreadTitle.forPrompt("Solve 2x + 3 = 9", kind: .practice) == "Solve 2x + 3 = 9")
+        #expect(StudyThreadTitle.forPrompt("Image problem", kind: .practice) == "Problem from image")
+        #expect(StudyThreadTitle.forPrompt(
+            "Let S be a complex region. Find and sketch the image of S under w=z^3.",
+            kind: .practice
+        ) == "Image of S under w = z³")
+        let longQuestion = "Determine whether the image of a region under a complex mapping is open or closed. Justify your answer."
+        let title = StudyThreadTitle.forPrompt(longQuestion, kind: .practice)
+        #expect(title.count <= 48)
+        #expect(title.contains("image of a region"))
+        #expect(!title.contains("Practice problem"))
+    }
+
+    @Test @MainActor
+    func lateTutorReplyStaysWithTheThreadThatStartedIt() async {
+        let client = GatedTutorClient()
+        let threads = StudyThreadStore()
+        let firstTutor = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        let firstID = threads.startPractice(prompt: "Differentiate x^2", tutor: firstTutor)
+        let firstRequest = Task { await firstTutor.beginProblem("Differentiate x^2") }
+        await client.waitUntilSendStarts()
+
+        let secondTutor = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        let secondID = threads.startPractice(prompt: "Integrate x^2", tutor: secondTutor)
+        #expect(threads.activeID == secondID)
+        await client.release()
+        #expect(await firstRequest.value)
+        #expect(firstTutor.entries.count == 2)
+        #expect(secondTutor.entries.isEmpty)
+        #expect(threads.activate(firstID) == .practice)
+        #expect(threads.activeTutor === firstTutor)
+    }
+
     @Test
     func revealedSolutionSeparatesNumberedStepsAndRepairsBareBoxedAnswer() {
         let layout = RevealedSolutionLayout(

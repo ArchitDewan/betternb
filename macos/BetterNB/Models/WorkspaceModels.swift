@@ -28,13 +28,13 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .home: "house"
-        case .review: "clock.arrow.circlepath"
-        case .study: "sparkles"
+        case .review: "clock"
+        case .study: "bubble.left"
         case .library: "books.vertical"
-        case .problems: "function"
-        case .flashcards: "rectangle.on.rectangle"
+        case .problems: "list.bullet"
+        case .flashcards: "square.on.square"
         case .formulaSheet: "sum"
-        case .canvas: "square.and.pencil"
+        case .canvas: "pencil"
         }
     }
 

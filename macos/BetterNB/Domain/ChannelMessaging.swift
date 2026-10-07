@@ -134,6 +134,8 @@ actor InMemoryChannelMessageRepository: ChannelMessageRepository {
 @Observable
 final class WorkspaceConversationStore {
     private let repository: any ChannelMessageRepository
+    var composerDraft = ""
+    var composerAttachment: MessageAttachment?
     private var loadedChannels: Set<WorkspaceDestination> = []
     private(set) var messagesByChannel: [WorkspaceDestination: [SessionMessage]] = [:]
     private(set) var sendingChannels: Set<WorkspaceDestination> = []

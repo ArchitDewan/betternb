@@ -3,26 +3,27 @@ import SwiftUI
 struct ChannelConversationView: View {
     let destination: WorkspaceDestination
     let conversations: WorkspaceConversationStore
+    var topicTitle = "Study conversation"
     var onBackToStudy: (() -> Void)? = nil
+    var onAskCourse: ((String) async -> Bool)? = nil
 
     @Environment(\.workspaceZoom) private var zoom
-    @State private var draft = ""
-    @State private var attachment: MessageAttachment?
+    @State private var composerFocusRequest = UUID()
 
     var body: some View {
         VStack(spacing: 0) {
             if let onBackToStudy {
                 HStack {
                     Button(action: onBackToStudy) {
-                        Label("Study desk", systemImage: "chevron.left")
+                        Label("Course workspace", systemImage: "chevron.left")
                             .zFont(12, weight: .medium, zoom: zoom)
-                            .foregroundStyle(AppTheme.secondaryText)
+                            .foregroundStyle(LemmaColors.textSecondary)
                     }
                     .buttonStyle(.plain)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, AppTheme.pagePadding * zoom)
-                .frame(height: 40 * zoom)
+                .frame(height: 42 * zoom)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(AppTheme.stroke).frame(height: 1)
                 }
@@ -31,6 +32,18 @@ struct ChannelConversationView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20 * zoom) {
+                        VStack(alignment: .leading, spacing: 8 * zoom) {
+                            Text("Study with Lemma")
+                                .font(LemmaTypography.caption(zoom))
+                                .foregroundStyle(LemmaColors.textTertiary)
+                            Text(topicTitle)
+                                .font(LemmaTypography.conceptTitle(zoom))
+                                .foregroundStyle(LemmaColors.textPrimary)
+                            Text("A focused space to understand the idea, one question at a time.")
+                                .font(LemmaTypography.body(zoom))
+                                .foregroundStyle(LemmaColors.textSecondary)
+                        }
+                        .padding(.bottom, 10 * zoom)
                         if conversations.messages(in: destination).isEmpty {
                             emptyState
                         } else {
@@ -38,11 +51,14 @@ struct ChannelConversationView: View {
                                 ChannelMessageBubble(message: message)
                                     .id(message.id)
                             }
+                            if conversations.messages(in: destination).last?.role == .tutor {
+                                followUpActions
+                            }
                         }
                     }
-                    .frame(maxWidth: AppTheme.composerMaxWidth * zoom, alignment: .leading)
+                    .frame(maxWidth: 820 * zoom, alignment: .leading)
                     .padding(.horizontal, AppTheme.pagePadding * zoom)
-                    .padding(.top, 26 * zoom)
+                    .padding(.top, 34 * zoom)
                     .padding(.bottom, 34 * zoom)
                     .frame(maxWidth: .infinity)
                 }
@@ -65,11 +81,18 @@ struct ChannelConversationView: View {
                 }
 
                 PromptComposer(
-                    draft: $draft,
-                    attachment: $attachment,
-                    placeholder: "Message \(destination.title)",
+                    draft: Binding(
+                        get: { conversations.composerDraft },
+                        set: { conversations.composerDraft = $0 }
+                    ),
+                    attachment: Binding(
+                        get: { conversations.composerAttachment },
+                        set: { conversations.composerAttachment = $0 }
+                    ),
+                    placeholder: "Ask a follow-up about \(topicTitle)…",
                     allowedContentTypes: [.png, .jpeg],
-                    attachmentDescription: "a PNG or JPEG image"
+                    attachmentDescription: "a PNG or JPEG image",
+                    focusRequest: composerFocusRequest
                 ) {
                     sendDraft()
                 }
@@ -78,9 +101,9 @@ struct ChannelConversationView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppTheme.pagePadding * zoom)
             .padding(.top, 10 * zoom)
-            .padding(.bottom, 20 * zoom)
+            .padding(.bottom, 22 * zoom)
         }
-        .background(AppTheme.canvas)
+        .background(Color.clear)
         .task(id: destination) {
             await conversations.load(destination)
         }
@@ -97,20 +120,50 @@ struct ChannelConversationView: View {
         }
     }
 
+    private var followUpActions: some View {
+        HStack(spacing: 14 * zoom) {
+            followUpButton("Explain more simply", prompt: "Could you explain that more simply?")
+            followUpButton("Another example", prompt: "Could you show me another example?")
+            followUpButton("Check my understanding", prompt: "Can you ask me a question to check my understanding?")
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 3 * zoom)
+    }
+
+    private func followUpButton(_ title: String, prompt: String) -> some View {
+        Button {
+            conversations.composerDraft = prompt
+            composerFocusRequest = UUID()
+        } label: {
+            Text(title)
+                .font(.system(size: 12 * zoom, weight: .medium))
+                .foregroundStyle(LemmaColors.accent)
+                .padding(.horizontal, 2 * zoom)
+                .frame(height: 26 * zoom)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func sendDraft() {
-        let submittedDraft = draft
-        let submittedAttachment = attachment
+        let submittedDraft = conversations.composerDraft
+        let submittedAttachment = conversations.composerAttachment
         Task {
-            if await conversations.send(
-                submittedDraft,
-                attachment: submittedAttachment,
-                in: destination
-            ) {
-                if draft == submittedDraft {
-                    draft = ""
+            let didSend: Bool
+            if let onAskCourse, submittedAttachment == nil {
+                didSend = await onAskCourse(submittedDraft)
+            } else {
+                didSend = await conversations.send(
+                    submittedDraft,
+                    attachment: submittedAttachment,
+                    in: destination
+                )
+            }
+            if didSend {
+                if conversations.composerDraft == submittedDraft {
+                    conversations.composerDraft = ""
                 }
-                if attachment?.id == submittedAttachment?.id {
-                    attachment = nil
+                if conversations.composerAttachment?.id == submittedAttachment?.id {
+                    conversations.composerAttachment = nil
                 }
             }
         }
@@ -124,6 +177,10 @@ struct ChannelMessageBubble: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8 * zoom) {
+                Text(message.role == .student ? "YOUR QUESTION" : "LEMMA · EXPLANATION")
+                    .font(LemmaTypography.caption(zoom))
+                    .foregroundStyle(message.role == .student ? LemmaColors.textTertiary : LemmaColors.textSecondary)
+                    .padding(.bottom, 3 * zoom)
                 if !message.text.isEmpty {
                     if message.role == .tutor {
                         TutorMathText(source: message.text, fontSize: 15 * zoom)
@@ -131,7 +188,7 @@ struct ChannelMessageBubble: View {
                         Text(message.text)
                             .zFont(15, zoom: zoom)
                             .foregroundStyle(AppTheme.primaryText)
-                            .lineSpacing(3)
+                            .lineSpacing(5)
                     }
                 }
 
@@ -153,19 +210,19 @@ struct ChannelMessageBubble: View {
                     .padding(.top, 3 * zoom)
                 }
             }
-                .padding(message.role == .student ? 12 * zoom : 0)
+                .padding(message.role == .student ? 14 * zoom : 0)
                 .background(
-                    message.role == .student ? AppTheme.paper : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    message.role == .student ? LemmaColors.surfaceElevated : Color.clear,
+                    in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom, style: .continuous)
                 )
                 .overlay {
                     if message.role == .student {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(AppTheme.stroke, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: LemmaRadius.control * zoom, style: .continuous)
+                            .stroke(LemmaColors.border, lineWidth: 1)
                     }
                 }
                 .frame(
-                    maxWidth: 560 * zoom,
+                    maxWidth: message.role == .student ? 620 * zoom : 760 * zoom,
                     alignment: message.role == .student ? .trailing : .leading
                 )
         }
@@ -173,6 +230,7 @@ struct ChannelMessageBubble: View {
             maxWidth: .infinity,
             alignment: message.role == .student ? .trailing : .leading
         )
+        .padding(.vertical, message.role == .student ? 4 * zoom : 13 * zoom)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message.role == .student ? "You" : "Tutor")
         .accessibilityValue(accessibilityValue)

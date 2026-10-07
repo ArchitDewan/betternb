@@ -2,112 +2,170 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct StudyDeskView: View {
-    let tutor: TutorSessionStore
     let sourceCount: Int
-    let onContinue: () -> Void
+    let problemCount: Int
+    let recentThreads: [StudyThreadSummary]
+    let totalThreadCount: Int
     let onManageSources: () -> Void
+    let onOpenProblems: () -> Void
+    let onOpenReview: () -> Void
+    let onOpenFormulaSheet: () -> Void
+    let onOpenThread: (UUID) -> Void
+    let onShowAllThreads: () -> Void
     let onAskCourse: (String) -> Void
     let onStartProblem: (String, MessageAttachment?) -> Void
 
     @Environment(\.workspaceZoom) private var zoom
     @State private var draft = ""
     @State private var attachment: MessageAttachment?
+    @State private var composerFocusRequest = UUID()
 
     var body: some View {
-        GeometryReader { geometry in
+        ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 12 * zoom) {
-                    contextBar
-                    startArea
-                    if tutor.problem != nil {
-                        continueAction
-                    }
+                VStack(alignment: .leading, spacing: 22 * zoom) {
+                    pageHeading
+                    continuation
+                    studyActions
+                    askSection
+                        .id("ask-lemma")
                 }
-                .frame(maxWidth: 780 * zoom, alignment: .leading)
-                .padding(.horizontal, AppTheme.pagePadding * zoom)
-                .padding(.top, max(68 * zoom, geometry.size.height * 0.30))
+                .frame(maxWidth: 1080 * zoom, alignment: .leading)
+                .padding(.horizontal, LemmaSpacing.page * zoom)
+                .padding(.top, 18 * zoom)
                 .padding(.bottom, 40 * zoom)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollIndicators(.hidden)
-        }
-        .background(AppTheme.canvas)
-    }
-
-    private var contextBar: some View {
-        HStack(spacing: 8 * zoom) {
-            Image(systemName: "sparkles")
-                .zFont(11, weight: .semibold, zoom: zoom)
-                .foregroundStyle(AppTheme.secondaryText)
-            Text("Study desk")
-                .zFont(13, weight: .semibold, zoom: zoom)
-                .foregroundStyle(AppTheme.primaryText)
-            Text("Calculus I")
-                .zFont(13, zoom: zoom)
-                .foregroundStyle(AppTheme.tertiaryText)
-
-            Spacer(minLength: 0)
-
-                Button(action: onManageSources) {
-                    HStack(spacing: 5 * zoom) {
-                        Image(systemName: "books.vertical")
-                            .zFont(10, weight: .medium, zoom: zoom)
-                        Text(sourceCount == 1 ? "1 source" : "\(sourceCount) sources")
-                            .zFont(12, weight: .medium, zoom: zoom)
-                        Image(systemName: "chevron.right")
-                            .zFont(8, weight: .semibold, zoom: zoom)
-                    }
-                    .foregroundStyle(AppTheme.secondaryText)
-                    .padding(.horizontal, 10 * zoom)
-                    .frame(height: 28 * zoom)
-                    .background(AppTheme.paper, in: Capsule())
-                    .overlay { Capsule().stroke(AppTheme.stroke, lineWidth: 1) }
-                    .contentShape(Rectangle())
+            .onChange(of: composerFocusRequest) { _, _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo("ask-lemma", anchor: .center)
                 }
-                .buttonStyle(.plain)
-                .help("Manage course sources")
-                .accessibilityLabel("Manage course sources, \(sourceCount) added")
+            }
+        }
+        .background(Color.clear)
+    }
+
+    private var pageHeading: some View {
+        HStack(alignment: .top, spacing: 16 * zoom) {
+            VStack(alignment: .leading, spacing: 7 * zoom) {
+                Text("Course workspace")
+                    .font(LemmaTypography.caption(zoom))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                Text("Calculus I")
+                    .font(LemmaTypography.pageTitle(zoom))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                Text(recentThreads.isEmpty
+                     ? "Find a starting point, or ask a question from your course material."
+                     : "Continue where you left off, or explore a new idea.")
+                    .font(LemmaTypography.body(zoom))
+                    .foregroundStyle(LemmaColors.textSecondary)
+            }
+            Spacer(minLength: 0)
+            Button(action: onManageSources) {
+                Label("\(sourceCount) \(sourceCount == 1 ? "source" : "sources")", systemImage: "books.vertical")
+                    .font(.system(size: 12 * zoom, weight: .medium))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                    .padding(.horizontal, 8 * zoom)
+                    .frame(height: 28 * zoom)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Manage course sources, \(sourceCount) added")
         }
     }
 
-    private var continueAction: some View {
-        Button(action: onContinue) {
-            HStack(spacing: 9 * zoom) {
-                Image(systemName: "arrow.turn.down.right")
-                    .zFont(11, weight: .semibold, zoom: zoom)
-                    .foregroundStyle(AppTheme.tertiaryText)
-                Text("Continue current problem")
-                    .zFont(12, weight: .medium, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-                if let problem = tutor.problem {
-                    Text(problem)
-                        .zFont(12, zoom: zoom)
-                        .foregroundStyle(AppTheme.tertiaryText)
-                        .lineLimit(1)
+    private var continuation: some View {
+        VStack(alignment: .leading, spacing: 8 * zoom) {
+            Text("Continue")
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.textTertiary)
+            Text(recentThreads.first?.title ?? "A place to begin")
+                .font(LemmaTypography.conceptTitle(zoom))
+                .foregroundStyle(LemmaColors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(continuationContext)
+                .font(LemmaTypography.body(zoom))
+                .foregroundStyle(LemmaColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: openContinuation) {
+                HStack(spacing: 6 * zoom) {
+                    Text(recentThreads.isEmpty ? "Browse problems" : "Continue")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11 * zoom, weight: .semibold))
+                }
+                .font(.system(size: 13 * zoom, weight: .medium))
+                .foregroundStyle(LemmaColors.accent)
+                .padding(.top, 4 * zoom)
+            }
+            .buttonStyle(.plain)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var continuationContext: String {
+        guard let thread = recentThreads.first else {
+            return "Your questions, problems, and course sources belong together here."
+        }
+        switch thread.kind {
+        case .practice:
+            return "Practice is open, with your earlier steps intact."
+        case .courseQuestion:
+            return "This course question is ready to continue."
+        }
+    }
+
+    private func openContinuation() {
+        if let thread = recentThreads.first {
+            onOpenThread(thread.id)
+        } else {
+            onOpenProblems()
+        }
+    }
+
+    private var studyActions: some View {
+        VStack(alignment: .leading, spacing: 6 * zoom) {
+            Text("Study")
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.textTertiary)
+            HStack(spacing: 2 * zoom) {
+                LemmaStudyAction(title: "Review", symbol: "clock.arrow.circlepath", action: onOpenReview)
+                LemmaStudyAction(
+                    title: "Practice",
+                    detail: "\(problemCount) saved",
+                    symbol: "function",
+                    action: onOpenProblems
+                )
+                LemmaStudyAction(title: "Formula sheet", symbol: "sum", action: onOpenFormulaSheet)
+                LemmaStudyAction(title: "Ask Lemma", symbol: "sparkle.magnifyingglass") {
+                    composerFocusRequest = UUID()
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.right")
-                    .zFont(10, weight: .semibold, zoom: zoom)
-                    .foregroundStyle(AppTheme.tertiaryText)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 6 * zoom)
-        .padding(.top, 2 * zoom)
-        .accessibilityLabel("Continue current problem")
     }
 
-    private var startArea: some View {
-        PromptComposer(
-            draft: $draft,
-            attachment: $attachment,
-            placeholder: "Ask, solve, or create study material",
-            allowedContentTypes: [.png, .jpeg],
-            attachmentDescription: "a PNG or JPEG homework image",
-            expanded: true
-        ) {
-            prepareSubmission()
+    private var askSection: some View {
+        VStack(alignment: .leading, spacing: 10 * zoom) {
+            HStack(alignment: .firstTextBaseline, spacing: 10 * zoom) {
+                Text("Ask Lemma")
+                    .font(LemmaTypography.ui(zoom))
+                    .foregroundStyle(LemmaColors.textSecondary)
+                Text("Grounded in your course sources")
+                    .font(LemmaTypography.caption(zoom))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                Spacer(minLength: 0)
+            }
+            PromptComposer(
+                draft: $draft,
+                attachment: $attachment,
+                placeholder: "Ask anything about Calculus I…",
+                allowedContentTypes: [.png, .jpeg],
+                attachmentDescription: "a PNG or JPEG homework image",
+                focusRequest: composerFocusRequest
+            ) {
+                prepareSubmission()
+            }
         }
     }
 
@@ -137,62 +195,66 @@ struct WorkspaceHomeView: View {
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24 * zoom) {
-            VStack(alignment: .leading, spacing: 7 * zoom) {
-                Text("Your courses")
-                    .zFont(28, weight: .semibold, zoom: zoom)
-                    .foregroundStyle(AppTheme.primaryText)
-                Text("Open a course to continue at its Study desk.")
-                    .zFont(15, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 27 * zoom) {
+                VStack(alignment: .leading, spacing: 8 * zoom) {
+                    Text("Your workspace")
+                        .font(LemmaTypography.caption(zoom))
+                        .foregroundStyle(LemmaColors.textTertiary)
+                    Text("A place for the ideas that stay with you.")
+                        .font(LemmaTypography.pageTitle(zoom))
+                        .foregroundStyle(LemmaColors.textPrimary)
+                    Text("Choose a course to continue learning.")
+                        .font(LemmaTypography.body(zoom))
+                        .foregroundStyle(LemmaColors.textSecondary)
+                }
 
-            Button(action: onOpenCalculus) {
-                HStack(spacing: 14 * zoom) {
-                    Image(systemName: "function")
-                        .zFont(18, weight: .medium, zoom: zoom)
-                        .foregroundStyle(AppTheme.primaryText)
-                        .frame(width: 36 * zoom, height: 36 * zoom)
-                        .background(AppTheme.elevated, in: RoundedRectangle(cornerRadius: 9 * zoom))
-                    VStack(alignment: .leading, spacing: 4 * zoom) {
-                        Text("Calculus I")
-                            .zFont(17, weight: .medium, zoom: zoom)
-                            .foregroundStyle(AppTheme.primaryText)
-                        Text("Continue limits and continuity")
-                            .zFont(13, zoom: zoom)
-                            .foregroundStyle(AppTheme.tertiaryText)
+                LemmaSectionHeader(title: "Your courses")
+
+                Button(action: onOpenCalculus) {
+                    HStack(spacing: 20 * zoom) {
+                        VStack(alignment: .leading, spacing: 11 * zoom) {
+                            Text("Active course")
+                                .font(LemmaTypography.caption(zoom))
+                                .foregroundStyle(LemmaColors.textTertiary)
+                            Text("Calculus I")
+                                .font(LemmaTypography.conceptTitle(zoom))
+                                .foregroundStyle(LemmaColors.textPrimary)
+                            Text("Problems, sources, and study threads in one place.")
+                                .font(LemmaTypography.body(zoom))
+                                .foregroundStyle(LemmaColors.textSecondary)
+                            Label("Open course", systemImage: "arrow.right")
+                                .font(.system(size: 12 * zoom, weight: .semibold))
+                                .foregroundStyle(LemmaColors.accent)
+                                .padding(.top, 5 * zoom)
+                        }
+                        Spacer(minLength: 0)
+                        LemmaKnowledgeMotif()
                     }
-                    Spacer(minLength: 0)
-                    Text("Open Study")
-                        .zFont(12, weight: .semibold, zoom: zoom)
-                        .foregroundStyle(AppTheme.secondaryText)
+                    .padding(LemmaSpacing.card * zoom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LemmaColors.surface,
+                                in: RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: LemmaRadius.card * zoom)
+                            .stroke(LemmaColors.border, lineWidth: 1)
+                    }
                 }
-                .padding(18 * zoom)
-                .frame(maxWidth: 620 * zoom, alignment: .leading)
-                .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 14 * zoom))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14 * zoom)
-                        .stroke(AppTheme.stroke, lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4 * zoom) {
-                Text("Linear Algebra")
-                    .zFont(15, weight: .medium, zoom: zoom)
-                    .foregroundStyle(AppTheme.secondaryText)
-                Text("Coming next")
-                    .zFont(12, zoom: zoom)
-                    .foregroundStyle(AppTheme.tertiaryText)
+                Text("Linear Algebra · Coming next")
+                    .font(.system(size: 12 * zoom))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                    .padding(.leading, 4 * zoom)
             }
-            .padding(.leading, 4 * zoom)
-
+            .frame(maxWidth: 1080 * zoom, alignment: .leading)
+            .padding(.horizontal, LemmaSpacing.page * zoom)
+            .padding(.top, 22 * zoom)
+            .padding(.bottom, 60 * zoom)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(.horizontal, AppTheme.pagePadding * zoom)
-        .padding(.top, 30 * zoom)
-        .padding(.bottom, 40 * zoom)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(AppTheme.canvas)
+        .scrollIndicators(.hidden)
+        .background(Color.clear)
     }
 }
 
@@ -204,6 +266,8 @@ struct CourseSourcesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isImporterPresented = false
     @State private var generatedMessage: String?
+    @State private var review = GeneratedProblemReviewStore()
+    @State private var editingDraftIDs: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18 * zoom) {
@@ -265,6 +329,52 @@ struct CourseSourcesView: View {
                             sourceRow(source)
                         }
                     }
+                    if !review.drafts.isEmpty {
+                        Text("Review generated problems")
+                            .zFont(13, weight: .semibold, zoom: zoom)
+                            .foregroundStyle(AppTheme.primaryText)
+                            .padding(.top, 12 * zoom)
+                        ForEach(review.drafts) { draft in
+                            HStack(alignment: .top, spacing: 8 * zoom) {
+                                Toggle("Save", isOn: Binding(
+                                    get: { review.drafts.first(where: { $0.id == draft.id })?.isSelected ?? false },
+                                    set: { _ in review.toggleSelection(draft.id) }
+                                ))
+                                .labelsHidden()
+                                VStack(alignment: .leading, spacing: 8 * zoom) {
+                                    if editingDraftIDs.contains(draft.id) {
+                                        TextField("Problem prompt", text: Binding(
+                                            get: { review.drafts.first(where: { $0.id == draft.id })?.prompt ?? "" },
+                                            set: { review.updatePrompt(draft.id, to: $0) }
+                                        ), axis: .vertical)
+                                        .lineLimit(2...6)
+                                        .textFieldStyle(.plain)
+                                        .zFont(12, zoom: zoom)
+                                        .foregroundStyle(AppTheme.primaryText)
+                                        Text("Preview")
+                                            .zFont(10, zoom: zoom)
+                                            .foregroundStyle(AppTheme.tertiaryText)
+                                    }
+                                    TutorMathText(
+                                        source: review.drafts.first(where: { $0.id == draft.id })?.prompt ?? draft.prompt,
+                                        fontSize: 12 * zoom
+                                    )
+                                    Button(editingDraftIDs.contains(draft.id) ? "Done editing" : "Edit prompt") {
+                                        if editingDraftIDs.contains(draft.id) {
+                                            editingDraftIDs.remove(draft.id)
+                                        } else {
+                                            editingDraftIDs.insert(draft.id)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .zFont(11, zoom: zoom)
+                                    .foregroundStyle(AppTheme.secondaryText)
+                                }
+                            }
+                            .padding(10 * zoom)
+                            .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 8 * zoom))
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -275,23 +385,34 @@ struct CourseSourcesView: View {
                     Text("Build a practice set")
                         .zFont(13, weight: .semibold, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
-                    Text(generatedMessage ?? "Create three problems grounded in these PDFs.")
+                    Text(generatedMessage ?? "Generate drafts from PDFs, then choose what to save.")
                         .zFont(11, zoom: zoom)
                         .foregroundStyle(AppTheme.tertiaryText)
                 }
                 Spacer(minLength: 0)
-                Button(store.isGenerating ? "Creating…" : "Create problems") {
-                    Task {
-                        let problems = await store.generateProblems(count: 3)
-                        guard !problems.isEmpty else { return }
-                        onGeneratedProblems(problems)
-                        generatedMessage = "Added \(problems.count) problems to Problems."
+                if review.drafts.isEmpty {
+                    Button(store.isGenerating ? "Creating…" : "Create drafts") {
+                        Task {
+                            let generated = await store.generateProblems(count: 3)
+                            review.load(generated)
+                            if !generated.isEmpty { generatedMessage = "Review and save selected drafts." }
+                        }
                     }
+                    .disabled(store.sources.isEmpty || store.isGenerating)
+                } else {
+                    Button("Discard") {
+                        review.discard()
+                        editingDraftIDs.removeAll()
+                    }
+                    Button("Save selected") {
+                        let selected = review.selectedProblems
+                        onGeneratedProblems(selected)
+                        review.discard()
+                        editingDraftIDs.removeAll()
+                        generatedMessage = "Saved \(selected.count) problems to Problems."
+                    }
+                    .disabled(review.selectedProblems.isEmpty)
                 }
-                .buttonStyle(.plain)
-                .zFont(12, weight: .semibold, zoom: zoom)
-                .foregroundStyle(store.sources.isEmpty ? AppTheme.tertiaryText : AppTheme.primaryText)
-                .disabled(store.sources.isEmpty || store.isGenerating)
             }
             .padding(14 * zoom)
             .background(AppTheme.paper, in: RoundedRectangle(cornerRadius: 12 * zoom))

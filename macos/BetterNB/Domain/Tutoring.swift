@@ -585,6 +585,8 @@ final class TutorSessionStore {
     private let client: any TutorClient
     private let sessionID: String
     var minimumResponseDelay: Duration
+    var composerDraft = ""
+    var composerAttachment: MessageAttachment?
 
     private(set) var problem: String?
     private(set) var attemptSteps: [String] = []
@@ -725,6 +727,8 @@ final class TutorSessionStore {
 
     func reset() {
         problem = nil
+        composerDraft = ""
+        composerAttachment = nil
         attemptSteps = []
         entries = []
         pendingTranscription = nil
@@ -899,17 +903,32 @@ struct CourseProblem: Identifiable, Equatable, Sendable {
     var prompt: String
     var openedInPractice: Bool
     let sources: [TutorSource]
+    var groupID: UUID?
 
     init(
         id: UUID = UUID(),
         prompt: String,
         openedInPractice: Bool = false,
-        sources: [TutorSource] = []
+        sources: [TutorSource] = [],
+        groupID: UUID? = nil
     ) {
         self.id = id
         self.prompt = prompt
         self.openedInPractice = openedInPractice
         self.sources = sources
+        self.groupID = groupID
+    }
+}
+
+struct ProblemGroup: Identifiable, Equatable, Sendable {
+    let id: UUID
+    var title: String
+    var sourceTitle: String?
+
+    init(id: UUID = UUID(), title: String, sourceTitle: String? = nil) {
+        self.id = id
+        self.title = title
+        self.sourceTitle = sourceTitle
     }
 }
 
@@ -917,14 +936,121 @@ struct CourseProblem: Identifiable, Equatable, Sendable {
 @Observable
 final class ProblemSetStore {
     private(set) var items: [CourseProblem] = []
+    private(set) var groups: [ProblemGroup] = []
 
     @discardableResult
-    func add(_ prompt: String, sources: [TutorSource] = []) -> CourseProblem? {
+    func add(_ prompt: String, sources: [TutorSource] = [], groupID: UUID? = nil) -> CourseProblem? {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let item = CourseProblem(prompt: trimmed, sources: sources)
+        guard groupID == nil || groups.contains(where: { $0.id == groupID }) else { return nil }
+        let item = CourseProblem(prompt: trimmed, sources: sources, groupID: groupID)
         items.insert(item, at: 0)
         return item
+    }
+
+    /// Saving reviewed questions creates/reuses a folder for each source document.
+    /// Importing a document alone never creates problems or folders.
+    @discardableResult
+    func addGenerated(_ generated: [GeneratedCourseProblem]) -> Int {
+        var saved = 0
+        for problem in generated.reversed() {
+            guard !problem.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let titles = Set(problem.sources.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+            let folderTitle = titles.count == 1 ? titles.first : (titles.isEmpty ? nil : "Mixed Course Sources")
+            let groupID = folderTitle.flatMap(folderID(for:))
+            if add(problem.prompt, sources: problem.sources, groupID: groupID) != nil {
+                saved += 1
+            }
+        }
+        return saved
+    }
+
+    private func folderID(for sourceTitle: String) -> UUID? {
+        let sourceTitle = sourceTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sourceTitle.isEmpty else { return nil }
+        if let existing = groups.first(where: {
+            $0.sourceTitle?.localizedCaseInsensitiveCompare(sourceTitle) == .orderedSame
+        }) {
+            return existing.id
+        }
+
+        let title = Self.folderTitle(for: sourceTitle)
+        if let index = groups.firstIndex(where: {
+            $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame && $0.sourceTitle == nil
+        }) {
+            groups[index].sourceTitle = sourceTitle
+            return groups[index].id
+        }
+
+        let group = ProblemGroup(title: title, sourceTitle: sourceTitle)
+        groups.append(group)
+        return group.id
+    }
+
+    private static func folderTitle(for filename: String) -> String {
+        let stem = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        let words = stem.components(separatedBy: CharacterSet(charactersIn: "_- "))
+            .filter { !$0.isEmpty }
+            .flatMap { word -> [String] in
+                let lower = word.lowercased()
+                if lower == "prac" || lower == "pract" { return ["Practice"] }
+                if lower.count > 1, lower.first == "a", lower.dropFirst().allSatisfy(\.isNumber) {
+                    return ["Assignment", String(lower.dropFirst())]
+                }
+                return [word == lower ? word.capitalized : word]
+            }
+        return words.joined(separator: " ")
+    }
+
+    @discardableResult
+    func addGroup(_ title: String) -> ProblemGroup? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let group = ProblemGroup(title: trimmed)
+        groups.append(group)
+        return group
+    }
+
+    @discardableResult
+    func renameGroup(_ id: UUID, to title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = groups.firstIndex(where: { $0.id == id }) else { return false }
+        groups[index].title = trimmed
+        return true
+    }
+
+    @discardableResult
+    func removeGroup(_ id: UUID) -> Bool {
+        guard groups.contains(where: { $0.id == id }) else { return false }
+        groups.removeAll { $0.id == id }
+        for index in items.indices where items[index].groupID == id {
+            items[index].groupID = nil
+        }
+        return true
+    }
+
+    @discardableResult
+    func update(_ id: UUID, prompt: String) -> Bool {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        items[index].prompt = trimmed
+        return true
+    }
+
+    @discardableResult
+    func move(_ id: UUID, to groupID: UUID?) -> Bool {
+        guard groupID == nil || groups.contains(where: { $0.id == groupID }),
+              let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        items[index].groupID = groupID
+        return true
+    }
+
+    @discardableResult
+    func remove(_ id: UUID) -> Bool {
+        let previousCount = items.count
+        items.removeAll { $0.id == id }
+        return items.count != previousCount
     }
 
     func markOpened(_ id: UUID) {

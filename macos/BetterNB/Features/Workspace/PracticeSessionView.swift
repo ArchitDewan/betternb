@@ -5,8 +5,6 @@ struct PracticeSessionView: View {
     let tutor: TutorSessionStore
     var onBackToStudy: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
-    @State private var draft = ""
-    @State private var attachment: MessageAttachment?
 
     private var sheet: PracticeWorksheet { tutor.worksheet }
 
@@ -219,9 +217,6 @@ struct PracticeSessionView: View {
             Spacer(minLength: 8 * zoom)
 
             Button {
-                tutor.reset()
-                draft = ""
-                attachment = nil
                 onBackToStudy()
             } label: {
                 Label("New problem", systemImage: "plus")
@@ -282,8 +277,14 @@ struct PracticeSessionView: View {
             }
 
             PromptComposer(
-                draft: $draft,
-                attachment: $attachment,
+                draft: Binding(
+                    get: { tutor.composerDraft },
+                    set: { tutor.composerDraft = $0 }
+                ),
+                attachment: Binding(
+                    get: { tutor.composerAttachment },
+                    set: { tutor.composerAttachment = $0 }
+                ),
                 placeholder: composerPlaceholder,
                 allowedContentTypes: [.png, .jpeg],
                 attachmentDescription: "a PNG or JPEG image"
@@ -378,14 +379,14 @@ struct PracticeSessionView: View {
     }
 
     private func sendDraft(as submittedIntent: TutorSubmitIntent) {
-        let submittedDraft = draft
-        let submittedAttachment = attachment
-        draft = ""
-        attachment = nil
+        let submittedDraft = tutor.composerDraft
+        let submittedAttachment = tutor.composerAttachment
+        tutor.composerDraft = ""
+        tutor.composerAttachment = nil
         Task {
             if await !tutor.submit(submittedDraft, attachment: submittedAttachment, intent: submittedIntent) {
-                if draft.isEmpty { draft = submittedDraft }
-                if attachment == nil { attachment = submittedAttachment }
+                if tutor.composerDraft.isEmpty { tutor.composerDraft = submittedDraft }
+                if tutor.composerAttachment == nil { tutor.composerAttachment = submittedAttachment }
             }
         }
     }

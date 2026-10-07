@@ -55,6 +55,21 @@ struct TutorMathTextTests {
     }
 
     @Test
+    func generatedAssignmentPromptRendersDelimitedMathInsteadOfRawLatexMarkers() {
+        let prompt = #"Find all fourth roots of \(-8+8\sqrt{3}\,i\). Express each root using an argument in \([0,2\pi)\)."#
+        let sections = TutorMathLayoutPlan.sections(for: MathMarkup.parse(prompt).renderPlan)
+        let accessibleText = TutorMathLayoutPlan.accessibleText(for: MathMarkup.parse(prompt).renderPlan)
+
+        guard case .flow(let tokens) = sections.first else {
+            Issue.record("The draft should render as an inline math flow")
+            return
+        }
+        #expect(tokens.filter(\.isMath).count == 2)
+        #expect(!accessibleText.contains(#"\("#))
+        #expect(!accessibleText.contains(#"\)"#))
+    }
+
+    @Test
     func commaSeparatedComposerPreviewUsesOneFormulaRow() {
         let markup = MathMarkup.livePreview(for: #"u = (x^2 + 1)^3, v = \sin 2x"#)
         let sections = TutorMathLayoutPlan.sections(for: markup?.renderPlan ?? [])

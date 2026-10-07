@@ -25,10 +25,13 @@ struct AuthenticationGateView: View {
             AppTheme.canvas.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 22 * zoom) {
+                LemmaKnowledgeMotif()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.bottom, 4 * zoom)
                 VStack(alignment: .leading, spacing: 8 * zoom) {
                     Text("Lemma")
                         .zFont(14, weight: .semibold, zoom: zoom)
-                        .foregroundStyle(AppTheme.secondaryText)
+                        .foregroundStyle(LemmaColors.accent)
 
                     Text("Your study workspace,\nready when you are.")
                         .zFont(34, weight: .semibold, zoom: zoom)
@@ -60,7 +63,7 @@ struct AuthenticationGateView: View {
                     .frame(height: 42 * zoom)
                     .foregroundStyle(AppTheme.inverseText)
                     .background(
-                        AppTheme.primaryText,
+                        LemmaColors.accent,
                         in: RoundedRectangle(cornerRadius: 10 * zoom, style: .continuous)
                     )
                 }
@@ -70,7 +73,7 @@ struct AuthenticationGateView: View {
             }
             .padding(32 * zoom)
             .frame(width: 460 * zoom, alignment: .leading)
-            .background(AppTheme.sidebar, in: RoundedRectangle(cornerRadius: 18 * zoom))
+            .background(AppTheme.panel, in: RoundedRectangle(cornerRadius: 18 * zoom))
             .overlay {
                 RoundedRectangle(cornerRadius: 18 * zoom)
                     .stroke(AppTheme.stroke, lineWidth: 1)

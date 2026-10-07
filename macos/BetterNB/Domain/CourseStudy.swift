@@ -31,6 +31,59 @@ struct GeneratedProblemsEnvelope: Codable, Equatable, Sendable {
     let problems: [GeneratedCourseProblem]
 }
 
+struct GeneratedProblemDraft: Identifiable, Equatable {
+    let id: UUID
+    var prompt: String
+    let sources: [TutorSource]
+    var isSelected: Bool
+
+    init(id: UUID = UUID(), prompt: String, sources: [TutorSource], isSelected: Bool = true) {
+        self.id = id
+        self.prompt = prompt
+        self.sources = sources
+        self.isSelected = isSelected
+    }
+}
+
+@MainActor
+@Observable
+final class GeneratedProblemReviewStore {
+    private(set) var drafts: [GeneratedProblemDraft] = []
+
+    var selectedProblems: [GeneratedCourseProblem] {
+        drafts.compactMap { draft in
+            let trimmed = draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard draft.isSelected, !trimmed.isEmpty else { return nil }
+            return GeneratedCourseProblem(prompt: trimmed, sources: draft.sources)
+        }
+    }
+
+    func load(_ generated: [GeneratedCourseProblem]) {
+        drafts = generated.map { GeneratedProblemDraft(prompt: $0.prompt, sources: $0.sources) }
+    }
+
+    func updatePrompt(_ id: UUID, to prompt: String) {
+        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        drafts[index].prompt = prompt
+    }
+
+    func toggleSelection(_ id: UUID) {
+        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        drafts[index].isSelected.toggle()
+    }
+
+    @discardableResult
+    func saveSelected(into problems: ProblemSetStore) -> Int {
+        let saved = problems.addGenerated(selectedProblems)
+        drafts = []
+        return saved
+    }
+
+    func discard() {
+        drafts = []
+    }
+}
+
 protocol CourseStudyClient: Sendable {
     func listSources(courseID: String) async throws -> [CourseSourceRecord]
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
@@ -48,6 +101,7 @@ final class CourseSourceStore {
     private(set) var isLoading = false
     private(set) var isImporting = false
     private(set) var isAnswering = false
+    private var activeAnswerCount = 0
     private(set) var isGenerating = false
     private(set) var errorMessage: String?
 
@@ -87,9 +141,12 @@ final class CourseSourceStore {
     }
 
     func answer(_ question: String) async -> GroundedCourseAnswer? {
-        guard !isAnswering else { return nil }
+        activeAnswerCount += 1
         isAnswering = true
-        defer { isAnswering = false }
+        defer {
+            activeAnswerCount -= 1
+            isAnswering = activeAnswerCount > 0
+        }
         do {
             let answer = try await client.answerCourseQuestion(question, courseID: courseID)
             errorMessage = nil
