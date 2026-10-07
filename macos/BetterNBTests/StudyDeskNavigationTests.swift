@@ -23,6 +23,7 @@ struct StudyDeskNavigationTests {
                 == .startProblem
         )
         #expect(StudyDeskInputRouter.proposal(for: "Evaluate the integral from 0 to 1") == .startProblem)
+        #expect(StudyDeskInputRouter.route(for: "5 * 5") == .startProblem)
     }
 
     @Test

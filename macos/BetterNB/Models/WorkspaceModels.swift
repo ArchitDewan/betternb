@@ -97,7 +97,9 @@ enum StudyDeskInputRouter {
             "calculate ", "determine ", "differentiate ", "evaluate ", "find ",
             "integrate ", "prove ", "simplify ", "solve ",
         ]
+        let arithmeticExpression = #"^-?\d+(?:\.\d+)?\s*[+*/^-]\s*-?\d+(?:\.\d+)?$"#
         if problemPrefixes.contains(where: lowered.hasPrefix)
+            || trimmed.range(of: arithmeticExpression, options: .regularExpression) != nil
             || TutorMessageKind.looksLikeMathStep(trimmed) {
             return .startProblem
         }

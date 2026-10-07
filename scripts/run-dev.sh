@@ -6,10 +6,27 @@ repository_root="$(cd "$(dirname "$0")/.." && pwd)"
 environment_file="$repository_root/.env.local"
 api_binary="$repository_root/.build/betternb-api-dev"
 api_log="$repository_root/.build/betternb-api.log"
-app_binary="$repository_root/.build/BetterNB.app/Contents/MacOS/BetterNB"
+app_directory="$repository_root/.build/BetterNB.app"
 api_pid=""
 tutor_log="$repository_root/.build/betternb-tutor.log"
 tutor_pid=""
+
+launch_app() {
+    local app_environment=(
+        --env "BETTERNB_TUTOR_URL=$BETTERNB_TUTOR_URL"
+    )
+    if [[ "${1:-}" == "--local-account" ]]; then
+        app_environment+=(--env "BETTERNB_DEV_AUTH_BYPASS=1")
+    else
+        app_environment+=(
+            --env "BETTERNB_API_URL=$BETTERNB_API_URL"
+            --env "BETTERNB_AUTH0_DOMAIN=$BETTERNB_AUTH0_DOMAIN"
+            --env "BETTERNB_AUTH0_CLIENT_ID=$BETTERNB_AUTH0_CLIENT_ID"
+            --env "BETTERNB_AUTH0_AUDIENCE=$BETTERNB_AUTH0_AUDIENCE"
+        )
+    fi
+    env -u OPENAI_API_KEY open -n -W "${app_environment[@]}" "$app_directory"
+}
 
 cleanup() {
     if [[ -n "$tutor_pid" ]] && kill -0 "$tutor_pid" 2>/dev/null; then
@@ -83,7 +100,7 @@ if [[ "${1:-}" == "--local-account" ]]; then
     export BETTERNB_DEV_AUTH_BYPASS=1
     echo "Using the local development account. Auth0 and PostgreSQL are not used."
     ./scripts/build-macos-prototype.sh
-    env -u OPENAI_API_KEY "$app_binary"
+    launch_app --local-account
     exit $?
 fi
 
@@ -155,4 +172,4 @@ if ! curl --fail --silent --show-error "$health_url" >/dev/null; then
 fi
 
 ./scripts/build-macos-prototype.sh
-env -u OPENAI_API_KEY "$app_binary"
+launch_app
