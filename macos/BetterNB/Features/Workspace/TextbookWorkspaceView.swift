@@ -58,6 +58,7 @@ struct TextbookWorkspaceView: View {
     @State private var isReading = false
     @State private var exchanges: [TextbookExchange] = []
     @State private var activeTool: TextbookTool = .home
+    @FocusState private var isQuestionFocused: Bool
     @Environment(\.workspaceZoom) private var zoom
 
     private var selectedSource: CourseSourceRecord? {
@@ -100,6 +101,7 @@ struct TextbookWorkspaceView: View {
         }
         .padding(.horizontal, LemmaSpacing.page)
         .padding(.vertical, 18)
+        .onTapGesture { isQuestionFocused = false }
     }
 
     private var sourcePane: some View {
@@ -176,6 +178,7 @@ struct TextbookWorkspaceView: View {
                 .lemmaComposerGlass(cornerRadius: LemmaRadius.card)
             }
         }
+        .simultaneousGesture(TapGesture().onEnded { isQuestionFocused = false })
     }
 
     private var scratchpadPane: some View {
@@ -222,6 +225,7 @@ struct TextbookWorkspaceView: View {
         }
         .scrollIndicators(.hidden)
         .frame(height: 50)
+        .onTapGesture { isQuestionFocused = false }
     }
 
     private var homePane: some View {
@@ -273,6 +277,8 @@ struct TextbookWorkspaceView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(22)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { isQuestionFocused = false }
             Rectangle().fill(LemmaColors.divider).frame(height: 1)
             composerFooter
         }
@@ -312,6 +318,8 @@ struct TextbookWorkspaceView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(22)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { isQuestionFocused = false }
             Rectangle().fill(LemmaColors.divider).frame(height: 1)
             composerFooter
         }
@@ -392,6 +400,7 @@ struct TextbookWorkspaceView: View {
                     .lineLimit(1...4)
                     .textFieldStyle(.plain)
                     .font(LemmaTypography.ui(zoom))
+                    .focused($isQuestionFocused)
                     .onSubmit { Task { await ask() } }
                 Button { Task { await ask() } } label: { Image(systemName: "arrow.up") }
                     .buttonStyle(.borderedProminent)
@@ -412,6 +421,8 @@ struct TextbookWorkspaceView: View {
         }
         .padding(14)
         .lemmaComposerGlass(cornerRadius: LemmaRadius.composer)
+        .contentShape(RoundedRectangle(cornerRadius: LemmaRadius.composer))
+        .onTapGesture { isQuestionFocused = true }
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, sources.errorMessage == nil ? 18 : 4)

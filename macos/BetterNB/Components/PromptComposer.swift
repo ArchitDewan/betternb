@@ -10,6 +10,7 @@ struct PromptComposer: View {
     var attachmentDescription = "PNG, JPEG, or PDF"
     var expanded = false
     var focusRequest: UUID? = nil
+    var blurRequest: UUID? = nil
     var onSend: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -61,6 +62,8 @@ struct PromptComposer: View {
             RoundedRectangle(cornerRadius: LemmaRadius.composer * zoom, style: .continuous)
                 .stroke(LemmaColors.hairline, lineWidth: 1)
         }
+        .contentShape(RoundedRectangle(cornerRadius: LemmaRadius.composer * zoom))
+        .onTapGesture { isComposerFocused = true }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: attachment?.id)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: attachmentError)
         .onPasteCommand(of: [.image, .png, .jpeg, .tiff]) { _ in
@@ -68,6 +71,9 @@ struct PromptComposer: View {
         }
         .onChange(of: focusRequest) { _, request in
             if request != nil { isComposerFocused = true }
+        }
+        .onChange(of: blurRequest) { _, request in
+            if request != nil { isComposerFocused = false }
         }
         .fileImporter(
             isPresented: $isImporterPresented,

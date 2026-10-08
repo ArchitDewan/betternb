@@ -19,24 +19,33 @@ struct StudyDeskView: View {
     @State private var draft = ""
     @State private var attachment: MessageAttachment?
     @State private var composerFocusRequest = UUID()
+    @State private var composerBlurRequest = UUID()
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 22 * zoom) {
+                VStack(alignment: .leading, spacing: 30 * zoom) {
                     pageHeading
+                        .onTapGesture { composerBlurRequest = UUID() }
                     continuation
+                        .onTapGesture { composerBlurRequest = UUID() }
                     studyActions
+                        .onTapGesture { composerBlurRequest = UUID() }
                     askSection
                         .id("ask-lemma")
+                    if !recentThreads.isEmpty {
+                        recentStudy
+                    }
                 }
-                .frame(maxWidth: 1080 * zoom, alignment: .leading)
+                .frame(maxWidth: 980 * zoom, alignment: .leading)
                 .padding(.horizontal, LemmaSpacing.page * zoom)
-                .padding(.top, 18 * zoom)
-                .padding(.bottom, 40 * zoom)
+                .padding(.top, 38 * zoom)
+                .padding(.bottom, 70 * zoom)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollIndicators(.hidden)
+            .contentShape(Rectangle())
+            .onTapGesture { composerBlurRequest = UUID() }
             .onChange(of: composerFocusRequest) { _, _ in
                 withAnimation(.easeInOut(duration: 0.2)) {
                     proxy.scrollTo("ask-lemma", anchor: .center)
@@ -47,17 +56,18 @@ struct StudyDeskView: View {
     }
 
     private var pageHeading: some View {
-        HStack(alignment: .top, spacing: 16 * zoom) {
-            VStack(alignment: .leading, spacing: 7 * zoom) {
-                Text("Course workspace")
-                    .font(LemmaTypography.caption(zoom))
-                    .foregroundStyle(LemmaColors.textTertiary)
+        HStack(alignment: .top, spacing: 20 * zoom) {
+            VStack(alignment: .leading, spacing: 9 * zoom) {
+                Text("COURSE WORKSPACE")
+                    .font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(LemmaColors.accent)
                 Text("Calculus I")
-                    .font(LemmaTypography.pageTitle(zoom))
+                    .font(.system(size: 34 * zoom, weight: .semibold))
                     .foregroundStyle(LemmaColors.textPrimary)
                 Text(recentThreads.isEmpty
-                     ? "Find a starting point, or ask a question from your course material."
-                     : "Continue where you left off, or explore a new idea.")
+                     ? "Make sense of a new idea, one step at a time."
+                     : "Pick up where you left off, or follow a new question.")
                     .font(LemmaTypography.body(zoom))
                     .foregroundStyle(LemmaColors.textSecondary)
             }
@@ -65,10 +75,13 @@ struct StudyDeskView: View {
             Button(action: onManageSources) {
                 Label("\(sourceCount) \(sourceCount == 1 ? "source" : "sources")", systemImage: "books.vertical")
                     .font(.system(size: 12 * zoom, weight: .medium))
-                    .foregroundStyle(LemmaColors.textTertiary)
-                    .padding(.horizontal, 8 * zoom)
-                    .frame(height: 28 * zoom)
-                    .contentShape(Rectangle())
+                    .foregroundStyle(LemmaColors.textSecondary)
+                    .padding(.horizontal, 12 * zoom)
+                    .frame(height: 32 * zoom)
+                    .background(LemmaColors.hoverWash,
+                                in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
+                    .overlay(RoundedRectangle(cornerRadius: LemmaRadius.control * zoom)
+                        .stroke(LemmaColors.hairline, lineWidth: 1))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Manage course sources, \(sourceCount) added")
@@ -76,36 +89,80 @@ struct StudyDeskView: View {
     }
 
     private var continuation: some View {
-        VStack(alignment: .leading, spacing: 8 * zoom) {
-            Text("Continue")
-                .font(LemmaTypography.caption(zoom))
-                .foregroundStyle(LemmaColors.textTertiary)
-            Text(recentThreads.first?.title ?? "A place to begin")
-                .font(LemmaTypography.conceptTitle(zoom))
-                .foregroundStyle(LemmaColors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(continuationContext)
-                .font(LemmaTypography.body(zoom))
-                .foregroundStyle(LemmaColors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button(action: openContinuation) {
-                HStack(spacing: 6 * zoom) {
-                    Text(recentThreads.isEmpty ? "Browse problems" : "Continue")
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 11 * zoom, weight: .semibold))
-                }
-                .font(.system(size: 13 * zoom, weight: .medium))
-                .foregroundStyle(LemmaColors.accent)
-                .padding(.top, 4 * zoom)
-            }
-            .buttonStyle(.plain)
+        ViewThatFits(in: .horizontal) {
+            continuationContent(showMotif: true)
+            continuationContent(showMotif: false)
+        }
+        .padding(24 * zoom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LemmaColors.surfaceElevated.opacity(0.46),
+                    in: RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
+        .overlay {
+            RoundedRectangle(cornerRadius: LemmaRadius.card * zoom)
+                .stroke(LemmaColors.hairline, lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
     }
 
+    private func continuationContent(showMotif: Bool) -> some View {
+        HStack(alignment: .center, spacing: 22 * zoom) {
+            VStack(alignment: .leading, spacing: 13 * zoom) {
+                Text(recentThreads.isEmpty ? "YOUR NEXT STEP" : "CONTINUE LEARNING")
+                    .font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(LemmaColors.accent)
+                Text(recentThreads.first?.title ?? emptyContinuationTitle)
+                    .font(.system(size: 23 * zoom, weight: .semibold))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(continuationContext)
+                    .font(LemmaTypography.ui(zoom))
+                    .foregroundStyle(LemmaColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14 * zoom) {
+                    Button {
+                        openContinuation()
+                    } label: {
+                        HStack(spacing: 8 * zoom) {
+                            Text(recentThreads.isEmpty ? emptyContinuationAction : "Continue")
+                            Image(systemName: "arrow.right")
+                        }
+                        .font(.system(size: 13 * zoom, weight: .semibold))
+                        .foregroundStyle(LemmaColors.onAccent)
+                        .padding(.horizontal, 15 * zoom)
+                        .frame(height: 35 * zoom)
+                        .background(LemmaColors.accent,
+                                    in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
+                    }
+                    .buttonStyle(.plain)
+                    if recentThreads.isEmpty {
+                        Button(problemCount > 0 ? "Ask Lemma" : "Browse problems") {
+                            if problemCount > 0 {
+                                composerFocusRequest = UUID()
+                            } else {
+                                onOpenProblems()
+                            }
+                        }
+                        .font(.system(size: 13 * zoom, weight: .medium))
+                        .foregroundStyle(LemmaColors.textSecondary)
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if showMotif {
+                LemmaKnowledgeMotif()
+                    .frame(width: 190 * zoom)
+            }
+        }
+    }
+
     private var continuationContext: String {
         guard let thread = recentThreads.first else {
-            return "Your questions, problems, and course sources belong together here."
+            if problemCount > 0 { return "Your saved problems are ready for another attempt." }
+            if sourceCount == 0 { return "Add a PDF to read, question, and study beside your notes." }
+            return "Explore a concept or ask about the material you've added."
         }
         switch thread.kind {
         case .practice:
@@ -118,53 +175,118 @@ struct StudyDeskView: View {
     private func openContinuation() {
         if let thread = recentThreads.first {
             onOpenThread(thread.id)
-        } else {
+        } else if problemCount > 0 {
             onOpenProblems()
+        } else if sourceCount == 0 {
+            onManageSources()
+        } else {
+            composerFocusRequest = UUID()
         }
+    }
+
+    private var emptyContinuationTitle: String {
+        if problemCount > 0 { return "Work through a problem" }
+        return sourceCount == 0 ? "Bring in your course material" : "Start with a question"
+    }
+
+    private var emptyContinuationAction: String {
+        if problemCount > 0 { return "Open problems" }
+        return sourceCount == 0 ? "Add a PDF" : "Ask Lemma"
     }
 
     private var studyActions: some View {
-        VStack(alignment: .leading, spacing: 6 * zoom) {
-            Text("Study")
-                .font(LemmaTypography.caption(zoom))
-                .foregroundStyle(LemmaColors.textTertiary)
-            HStack(spacing: 2 * zoom) {
-                LemmaStudyAction(title: "Review", symbol: "clock.arrow.circlepath", action: onOpenReview)
-                LemmaStudyAction(
-                    title: "Practice",
-                    detail: "\(problemCount) saved",
-                    symbol: "function",
-                    action: onOpenProblems
-                )
-                LemmaStudyAction(title: "Formula sheet", symbol: "sum", action: onOpenFormulaSheet)
-                LemmaStudyAction(title: "Ask Lemma", symbol: "sparkle.magnifyingglass") {
-                    composerFocusRequest = UUID()
-                }
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 14 * zoom) {
+            LemmaSectionHeader(title: "Your workspace", detail: "Tools for the next step")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 205 * zoom), spacing: 10 * zoom)], spacing: 10 * zoom) {
+                workspaceAction("Sources", detail: "\(sourceCount) added", symbol: "books.vertical", tint: LemmaColors.toolSummary, action: onManageSources)
+                workspaceAction("Problems", detail: "\(problemCount) saved", symbol: "function", tint: LemmaColors.toolQuiz, action: onOpenProblems)
+                workspaceAction("Review", detail: "Revisit an idea", symbol: "clock.arrow.circlepath", tint: LemmaColors.toolChat, action: onOpenReview)
+                workspaceAction("Formula sheet", detail: "Keep methods close", symbol: "sum", tint: LemmaColors.toolFlashcards, action: onOpenFormulaSheet)
             }
         }
     }
 
-    private var askSection: some View {
-        VStack(alignment: .leading, spacing: 10 * zoom) {
-            HStack(alignment: .firstTextBaseline, spacing: 10 * zoom) {
-                Text("Ask Lemma")
-                    .font(LemmaTypography.ui(zoom))
-                    .foregroundStyle(LemmaColors.textSecondary)
-                Text("Grounded in your course sources")
-                    .font(LemmaTypography.caption(zoom))
-                    .foregroundStyle(LemmaColors.textTertiary)
+    private func workspaceAction(_ title: String, detail: String, symbol: String, tint: Color,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12 * zoom) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16 * zoom, weight: .medium))
+                    .foregroundStyle(tint)
+                    .frame(width: 34 * zoom, height: 34 * zoom)
+                    .background(tint.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 9 * zoom))
+                VStack(alignment: .leading, spacing: 3 * zoom) {
+                    Text(title)
+                        .font(.system(size: 13 * zoom, weight: .semibold))
+                        .foregroundStyle(LemmaColors.textPrimary)
+                    Text(detail)
+                        .font(.system(size: 11 * zoom))
+                        .foregroundStyle(LemmaColors.textTertiary)
+                }
                 Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 10 * zoom, weight: .medium))
+                    .foregroundStyle(LemmaColors.textTertiary)
             }
+            .padding(12 * zoom)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LemmaColors.hoverWash,
+                        in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
+            .overlay(RoundedRectangle(cornerRadius: LemmaRadius.control * zoom)
+                .stroke(LemmaColors.hairline, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(detail)")
+    }
+
+    private var askSection: some View {
+        VStack(alignment: .leading, spacing: 14 * zoom) {
+            LemmaSectionHeader(title: "Ask Lemma", detail: sourceCount == 0
+                               ? "Add a source for course-grounded answers"
+                               : "Explore a question from your course material")
             PromptComposer(
                 draft: $draft,
                 attachment: $attachment,
                 placeholder: "Ask anything about Calculus I…",
                 allowedContentTypes: [.png, .jpeg],
                 attachmentDescription: "a PNG or JPEG homework image",
-                focusRequest: composerFocusRequest
+                focusRequest: composerFocusRequest,
+                blurRequest: composerBlurRequest
             ) {
                 prepareSubmission()
+            }
+        }
+    }
+
+    private var recentStudy: some View {
+        VStack(alignment: .leading, spacing: 12 * zoom) {
+            HStack {
+                LemmaSectionHeader(title: "Recent study", detail: "Pick up a thread")
+                Button("View all", action: onShowAllThreads)
+                    .font(.system(size: 12 * zoom, weight: .medium))
+                    .foregroundStyle(LemmaColors.accent)
+                    .buttonStyle(.plain)
+            }
+            ForEach(recentThreads) { thread in
+                Button { onOpenThread(thread.id) } label: {
+                    HStack(spacing: 10 * zoom) {
+                        Image(systemName: thread.kind == .practice ? "function" : "bubble.left")
+                            .foregroundStyle(LemmaColors.accent)
+                            .frame(width: 20 * zoom)
+                        Text(thread.title)
+                            .font(LemmaTypography.ui(zoom))
+                            .foregroundStyle(LemmaColors.textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 10 * zoom))
+                            .foregroundStyle(LemmaColors.textTertiary)
+                    }
+                    .padding(.vertical, 8 * zoom)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }

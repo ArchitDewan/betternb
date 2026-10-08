@@ -5,6 +5,7 @@ struct PracticeSessionView: View {
     let tutor: TutorSessionStore
     var onBackToStudy: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
+    @State private var composerBlurRequest = UUID()
 
     private var sheet: PracticeWorksheet { tutor.worksheet }
 
@@ -45,6 +46,8 @@ struct PracticeSessionView: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                     .scrollIndicators(.hidden)
+                    .contentShape(Rectangle())
+                    .onTapGesture { composerBlurRequest = UUID() }
                     .onChange(of: tutor.entries.count) { _, _ in
                         scroll(proxy)
                     }
@@ -287,7 +290,8 @@ struct PracticeSessionView: View {
                 ),
                 placeholder: composerPlaceholder,
                 allowedContentTypes: [.png, .jpeg],
-                attachmentDescription: "a PNG or JPEG image"
+                attachmentDescription: "a PNG or JPEG image",
+                blurRequest: composerBlurRequest
             ) {
                 sendDraft(as: .automatic)
             }

@@ -9,6 +9,7 @@ struct ChannelConversationView: View {
 
     @Environment(\.workspaceZoom) private var zoom
     @State private var composerFocusRequest = UUID()
+    @State private var composerBlurRequest = UUID()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +64,8 @@ struct ChannelConversationView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .scrollIndicators(.hidden)
+                .contentShape(Rectangle())
+                .onTapGesture { composerBlurRequest = UUID() }
                 .onChange(of: conversations.messages(in: destination).count) { _, _ in
                     if let last = conversations.messages(in: destination).last {
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -92,7 +95,8 @@ struct ChannelConversationView: View {
                     placeholder: "Ask a follow-up about \(topicTitle)…",
                     allowedContentTypes: [.png, .jpeg],
                     attachmentDescription: "a PNG or JPEG image",
-                    focusRequest: composerFocusRequest
+                    focusRequest: composerFocusRequest,
+                    blurRequest: composerBlurRequest
                 ) {
                     sendDraft()
                 }
