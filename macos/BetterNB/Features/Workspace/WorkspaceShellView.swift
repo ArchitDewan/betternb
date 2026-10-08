@@ -8,6 +8,7 @@ struct WorkspaceShellView: View {
         courseID: "calculus-1",
         client: AppDependencies.makeCourseStudyClient()
     )
+    @State private var textbookScratchpad = TextbookScratchpadStore()
     @State private var problemSet = ProblemSetStore()
     @State private var isSearchPresented = false
     @State private var isSourcesPresented = false
@@ -74,6 +75,10 @@ struct WorkspaceShellView: View {
             }
         case .study:
             studyView
+        case .textbook:
+            TextbookWorkspaceView(sources: courseSources, scratchpad: textbookScratchpad) {
+                isSourcesPresented = true
+            }
         case .problems:
             ProblemSetView(store: problemSet) { item in
                 problemSet.markOpened(item.id)

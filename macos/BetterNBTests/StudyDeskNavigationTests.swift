@@ -6,7 +6,7 @@ struct StudyDeskNavigationTests {
     @Test
     func sidebarHasOnePrimaryStudyEntryAndProgressivelyDisclosedTools() {
         #expect(WorkspaceDestination.primary == [.home, .review])
-        #expect(WorkspaceDestination.courseTools == [.study, .problems])
+        #expect(WorkspaceDestination.courseTools == [.study, .textbook, .problems])
         #expect(WorkspaceDestination.studyTools == [.flashcards, .formulaSheet, .canvas])
     }
 

@@ -4,6 +4,7 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     case home
     case review
     case study
+    case textbook
     case library
     case problems
     case flashcards
@@ -17,6 +18,7 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
         case .home: "Home"
         case .review: "Review"
         case .study: "Study"
+        case .textbook: "Textbook"
         case .library: "Library"
         case .problems: "Problems"
         case .flashcards: "Flashcards"
@@ -30,6 +32,7 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
         case .home: "house"
         case .review: "clock"
         case .study: "bubble.left"
+        case .textbook: "book.closed"
         case .library: "books.vertical"
         case .problems: "list.bullet"
         case .flashcards: "square.on.square"
@@ -41,6 +44,7 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     static let primary: [WorkspaceDestination] = [.home, .review]
     static let courseTools: [WorkspaceDestination] = [
         .study,
+        .textbook,
         .problems,
     ]
     static let studyTools: [WorkspaceDestination] = [

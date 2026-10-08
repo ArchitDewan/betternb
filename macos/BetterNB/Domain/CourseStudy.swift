@@ -86,6 +86,7 @@ final class GeneratedProblemReviewStore {
 
 protocol CourseStudyClient: Sendable {
     func listSources(courseID: String) async throws -> [CourseSourceRecord]
+    func readPDF(sourceID: String, courseID: String) async throws -> Data
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
     func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer
     func generateProblems(courseID: String, count: Int) async throws -> [GeneratedCourseProblem]
@@ -120,6 +121,10 @@ final class CourseSourceStore {
         } catch {
             errorMessage = message(for: error, fallback: "Sources couldn’t be loaded.")
         }
+    }
+
+    func document(for sourceID: String) async throws -> Data {
+        try await client.readPDF(sourceID: sourceID, courseID: courseID)
     }
 
     @discardableResult

@@ -69,6 +69,12 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         return try decoder.decode([CourseSourceRecord].self, from: await responseData(for: request))
     }
 
+    func readPDF(sourceID: String, courseID: String) async throws -> Data {
+        var request = URLRequest(url: courseURL(courseID, path: "sources/\(sourceID)/document"))
+        request.setValue("application/pdf", forHTTPHeaderField: "Accept")
+        return try await responseData(for: request)
+    }
+
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {
         let boundary = "Lemma-\(UUID().uuidString)"
         var request = URLRequest(url: courseURL(courseID, path: "sources"))

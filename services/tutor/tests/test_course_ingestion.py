@@ -78,6 +78,16 @@ def test_pdf_import_extracts_page_aware_chunks_and_isolates_courses() -> None:
     assert "basis" not in results[0].chunk.content
 
 
+def test_original_pdf_is_available_only_to_its_course() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    pdf = _single_page_pdf("The chain rule differentiates composite functions.")
+    source = index.import_pdf("calculus-1", "Lecture 4.pdf", pdf)
+
+    assert index.get_document("calculus-1", source.source_id) == pdf
+    assert index.get_document("linear-algebra", source.source_id) is None
+    assert index.get_document("calculus-1", "missing") is None
+
+
 def test_scanned_or_empty_pdf_has_an_actionable_failure() -> None:
     index = CourseSourceIndex(KeywordEmbeddings())
 

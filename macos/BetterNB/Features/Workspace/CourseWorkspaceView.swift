@@ -20,7 +20,7 @@ struct CourseWorkspaceView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.hidden)
-        .background(AppTheme.canvas)
+        .background(Color.clear)
     }
 
     private var header: some View {

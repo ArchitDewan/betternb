@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from .contracts import (
     CourseAnswerResponse,
@@ -66,6 +66,13 @@ def create_app(
         @app.get("/v1/courses/{course_id}/sources", response_model=list[CourseSourceResponse])
         def list_course_sources(course_id: str) -> list[CourseSourceResponse]:
             return [CourseSourceResponse(**source.__dict__) for source in course_study.sources.list_sources(course_id)]
+
+        @app.get("/v1/courses/{course_id}/sources/{source_id}/document")
+        def read_course_source(course_id: str, source_id: str) -> Response:
+            document = course_study.sources.get_document(course_id, source_id)
+            if document is None:
+                raise HTTPException(status_code=404, detail="Course source not found.")
+            return Response(content=document, media_type="application/pdf")
 
         @app.post("/v1/courses/{course_id}/sources", response_model=CourseSourceResponse)
         async def import_course_source(course_id: str, document: UploadFile = File(...)) -> CourseSourceResponse:

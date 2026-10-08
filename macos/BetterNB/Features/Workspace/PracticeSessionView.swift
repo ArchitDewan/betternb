@@ -79,7 +79,7 @@ struct PracticeSessionView: View {
                 .frame(width: 244)
             }
         }
-        .background(AppTheme.canvas)
+        .background(Color.clear)
     }
 
     private var showsInspectorRail: Bool {

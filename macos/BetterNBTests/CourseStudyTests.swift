@@ -22,6 +22,15 @@ struct CourseStudyTests {
     }
 
     @Test @MainActor
+    func textbookReadsAnIndexedSourceDocument() async throws {
+        let store = CourseSourceStore(courseID: "calculus-1", client: RecordingCourseStudyClient())
+
+        let document = try await store.document(for: "source-1")
+
+        #expect(document.starts(with: Data("%PDF".utf8)))
+    }
+
+    @Test @MainActor
     func groundedAnswerKeepsPageCitationsOnConversationReply() async {
         let client = RecordingCourseStudyClient()
         let answer = try! await client.answerCourseQuestion("What is the chain rule?", courseID: "calculus-1")
@@ -140,6 +149,8 @@ private actor GatedCourseAnswerClient: CourseStudyClient {
 
     func listSources(courseID: String) async throws -> [CourseSourceRecord] { [] }
 
+    func readPDF(sourceID: String, courseID: String) async throws -> Data { Data() }
+
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {
         CourseSourceRecord(sourceID: "unused", filename: attachment.filename, pageCount: 1, chunkCount: 1)
     }
@@ -173,6 +184,10 @@ private actor GatedCourseAnswerClient: CourseStudyClient {
 private actor RecordingCourseStudyClient: CourseStudyClient {
     func listSources(courseID: String) async throws -> [CourseSourceRecord] {
         []
+    }
+
+    func readPDF(sourceID: String, courseID: String) async throws -> Data {
+        Data("%PDF-1.4 source-1".utf8)
     }
 
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {

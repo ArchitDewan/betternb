@@ -42,6 +42,7 @@ class CourseSourceIndex:
     def __init__(self, embeddings: EmbeddingGateway) -> None:
         self._embeddings = embeddings
         self._sources: dict[str, dict[str, CourseSource]] = {}
+        self._documents: dict[str, dict[str, bytes]] = {}
         self._chunks: dict[str, list[KnowledgeChunk]] = {}
         self._vectors: dict[str, list[list[float]]] = {}
 
@@ -95,10 +96,14 @@ class CourseSourceIndex:
         self._chunks[course_id] = combined_chunks
         self._vectors[course_id] = self._embeddings.embed([_index_text(chunk) for chunk in combined_chunks])
         self._sources.setdefault(course_id, {})[source_id] = source
+        self._documents.setdefault(course_id, {})[source_id] = data
         return source
 
     def list_sources(self, course_id: str) -> list[CourseSource]:
         return sorted(self._sources.get(course_id, {}).values(), key=lambda source: source.filename.lower())
+
+    def get_document(self, course_id: str, source_id: str) -> bytes | None:
+        return self._documents.get(course_id, {}).get(source_id)
 
     def search(self, course_id: str, query: str, limit: int = 5) -> list[SearchResult]:
         chunks = self._chunks.get(course_id, [])

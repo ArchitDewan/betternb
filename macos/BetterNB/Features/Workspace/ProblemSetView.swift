@@ -40,7 +40,7 @@ struct ProblemSetView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .scrollIndicators(.hidden)
-        .background(AppTheme.canvas)
+        .background(Color.clear)
         .alert(folderToRename == nil ? "New folder" : "Rename folder", isPresented: $isFolderDialogPresented) {
             TextField("Folder name", text: $folderName)
             Button("Cancel", role: .cancel) { folderToRename = nil }

@@ -56,6 +56,11 @@ class StubCourseSources:
     def list_sources(self, course_id):
         return [CourseSource("source-1", "Lecture.pdf", 2, 3)]
 
+    def get_document(self, course_id, source_id):
+        if course_id == "calculus-1" and source_id == "source-1":
+            return b"%PDF-1.4 sample"
+        return None
+
 
 class StubCourseStudy:
     sources = StubCourseSources()
@@ -197,3 +202,16 @@ def test_course_source_upload_rejects_non_pdf() -> None:
     )
 
     assert response.status_code == 415
+
+
+def test_course_document_can_be_read_only_within_its_course() -> None:
+    test_client = course_client()
+
+    document = test_client.get("/v1/courses/calculus-1/sources/source-1/document")
+    missing = test_client.get("/v1/courses/linear-algebra/sources/source-1/document")
+
+    assert document.status_code == 200
+    assert document.headers["content-type"] == "application/pdf"
+    assert document.headers["cache-control"] == "no-store"
+    assert document.content == b"%PDF-1.4 sample"
+    assert missing.status_code == 404
