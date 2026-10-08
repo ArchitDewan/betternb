@@ -89,12 +89,16 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         return try decoder.decode(CourseSourceRecord.self, from: await responseData(for: request))
     }
 
-    func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
+    func answerCourseQuestion(_ question: String, courseID: String,
+                              attachment: MessageAttachment? = nil) async throws -> GroundedCourseAnswer {
         var request = URLRequest(url: courseURL(courseID, path: "answers"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try encoder.encode(CourseQuestionEnvelope(question: question))
+        request.httpBody = try encoder.encode(CourseQuestionEnvelope(
+            question: question,
+            image: attachment.map { .init(mediaType: $0.mediaType, data: $0.data.base64EncodedString()) }
+        ))
         return try decoder.decode(GroundedCourseAnswer.self, from: await responseData(for: request))
     }
 
@@ -161,6 +165,17 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
 
     private struct CourseQuestionEnvelope: Encodable {
         let question: String
+        let image: CourseQuestionImageEnvelope?
+    }
+
+    private struct CourseQuestionImageEnvelope: Encodable {
+        let mediaType: String
+        let data: String
+
+        enum CodingKeys: String, CodingKey {
+            case mediaType = "media_type"
+            case data
+        }
     }
 
     private struct GenerateProblemsRequestEnvelope: Encodable {

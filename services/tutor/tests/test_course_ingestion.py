@@ -1,4 +1,7 @@
 from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService
+from betternb_tutor.knowledge import KnowledgeChunk
+from betternb_tutor.providers import OpenAIModelGateway
+from types import SimpleNamespace
 
 
 class KeywordEmbeddings:
@@ -17,8 +20,9 @@ class KeywordEmbeddings:
 
 
 class StubStudyModel:
-    def answer_course_question(self, question, context):
+    def answer_course_question(self, question, context, image=None):
         assert context
+        self.last_image = image
         return f"Grounded answer: {context[0].content}"
 
     def generate_course_problems(self, context, count):
@@ -117,3 +121,36 @@ def test_grounded_answers_and_generated_problems_keep_page_citations() -> None:
     assert answer.sources[0].section == "Page 1"
     assert [item.prompt for item in generated] == ["Problem 1 from Page 1", "Problem 2 from Page 1"]
     assert all(item.sources[0].section == "Page 1" for item in generated)
+
+
+def test_image_only_question_receives_course_context() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Lecture.pdf", _single_page_pdf("The chain rule differentiates functions."))
+    model = StubStudyModel()
+    service = CourseStudyService(index, model)
+    image = (b"\x89PNG\r\n\x1a\nexample", "image/png")
+
+    answer = service.answer("calculus-1", "What is in this image?", image=image)
+
+    assert model.last_image == image
+    assert answer.sources[0].title == "Lecture.pdf"
+
+
+def test_course_model_sends_the_image_with_retrieved_excerpts() -> None:
+    class Responses:
+        request = None
+
+        def parse(self, **kwargs):
+            self.request = kwargs
+            return SimpleNamespace(output_parsed=SimpleNamespace(answer="The diagram shows a derivative."))
+
+    responses = Responses()
+    model = OpenAIModelGateway(SimpleNamespace(responses=responses))
+    chunk = KnowledgeChunk("source-1", "Lecture.pdf", "Page 3", "calculus-1", "The chain rule.")
+
+    answer = model.answer_course_question("Explain this", [chunk], image=(b"png", "image/png"))
+
+    assert answer == "The diagram shows a derivative."
+    content = responses.request["input"][0]["content"]
+    assert "The chain rule." in content[0]["text"]
+    assert content[1]["image_url"].startswith("data:image/png;base64,")

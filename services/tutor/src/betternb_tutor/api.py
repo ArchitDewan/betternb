@@ -1,3 +1,6 @@
+import base64
+import binascii
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response
 
@@ -89,8 +92,21 @@ def create_app(
 
         @app.post("/v1/courses/{course_id}/answers", response_model=CourseAnswerResponse)
         def answer_course_question(course_id: str, request: CourseQuestionRequest) -> CourseAnswerResponse:
+            image = None
+            if request.image is not None:
+                if request.image.media_type not in SUPPORTED_IMAGE_TYPES:
+                    raise HTTPException(status_code=415, detail="Choose a PNG or JPEG image.")
+                try:
+                    data = base64.b64decode(request.image.data, validate=True)
+                except binascii.Error as error:
+                    raise HTTPException(status_code=400, detail="The image data is invalid.") from error
+                if not data or not _has_valid_signature(data, request.image.media_type):
+                    raise HTTPException(status_code=415, detail="The file content is not a valid PNG or JPEG image.")
+                if len(data) > MAXIMUM_IMAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="Choose an image that is 10 MiB or smaller.")
+                image = (data, request.image.media_type)
             try:
-                answer = course_study.answer(course_id, request.question)
+                answer = course_study.answer(course_id, request.question, image=image)
             except LookupError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
             except Exception as error:

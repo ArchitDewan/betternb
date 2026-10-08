@@ -33,7 +33,9 @@ class GeneratedCourseProblem:
 
 
 class CourseStudyModel(Protocol):
-    def answer_course_question(self, question: str, context: list[KnowledgeChunk]) -> str: ...
+    def answer_course_question(
+        self, question: str, context: list[KnowledgeChunk], image: tuple[bytes, str] | None = None
+    ) -> str: ...
 
     def generate_course_problems(self, context: list[KnowledgeChunk], count: int) -> list[str]: ...
 
@@ -131,13 +133,15 @@ class CourseStudyService:
         self.sources = sources
         self._model = model
 
-    def answer(self, course_id: str, question: str) -> GroundedAnswer:
+    def answer(self, course_id: str, question: str, image: tuple[bytes, str] | None = None) -> GroundedAnswer:
         results = self.sources.search(course_id, question, limit=5)
-        if not results:
-            raise LookupError("Add a readable course source before asking a grounded question.")
         context = [result.chunk for result in results]
+        if not context and image is not None:
+            context = self.sources.all_chunks(course_id, limit=5)
+        if not context:
+            raise LookupError("Add a readable course source before asking a grounded question.")
         return GroundedAnswer(
-            text=self._model.answer_course_question(question, context),
+            text=self._model.answer_course_question(question, context, image=image),
             sources=_references(context),
         )
 

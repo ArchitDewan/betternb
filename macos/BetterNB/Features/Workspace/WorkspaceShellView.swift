@@ -76,9 +76,12 @@ struct WorkspaceShellView: View {
         case .study:
             studyView
         case .textbook:
-            TextbookWorkspaceView(sources: courseSources, scratchpad: textbookScratchpad) {
-                isSourcesPresented = true
-            }
+            TextbookWorkspaceView(
+                sources: courseSources,
+                scratchpad: textbookScratchpad,
+                onManageSources: { isSourcesPresented = true },
+                onPracticeSelection: { startProblem($0, attachment: nil) }
+            )
         case .problems:
             ProblemSetView(store: problemSet) { item in
                 problemSet.markOpened(item.id)

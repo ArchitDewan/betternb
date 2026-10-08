@@ -1,15 +1,11 @@
 import PDFKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 private struct TextbookSelection {
     let text: String
     let page: Int
-}
-
-private struct TextbookExchange: Identifiable {
-    let id = UUID()
-    let question: String
-    let answer: GroundedCourseAnswer
+    let anchor: CGPoint
 }
 
 private enum TextbookTool: String, CaseIterable, Identifiable {
@@ -50,15 +46,16 @@ struct TextbookWorkspaceView: View {
     @Bindable var sources: CourseSourceStore
     @Bindable var scratchpad: TextbookScratchpadStore
     let onManageSources: () -> Void
+    let onPracticeSelection: (String) -> Void
 
     @State private var selectedSourceID: String?
     @State private var document: PDFDocument?
     @State private var selection: TextbookSelection?
     @State private var documentError: String?
     @State private var isReading = false
-    @State private var exchanges: [TextbookExchange] = []
     @State private var activeTool: TextbookTool = .home
-    @FocusState private var isQuestionFocused: Bool
+    @State private var composerFocusRequest: UUID?
+    @State private var composerBlurRequest: UUID?
     @Environment(\.workspaceZoom) private var zoom
 
     private var selectedSource: CourseSourceRecord? {
@@ -101,7 +98,7 @@ struct TextbookWorkspaceView: View {
         }
         .padding(.horizontal, LemmaSpacing.page)
         .padding(.vertical, 18)
-        .onTapGesture { isQuestionFocused = false }
+        .onTapGesture { composerBlurRequest = UUID() }
     }
 
     private var sourcePane: some View {
@@ -134,8 +131,24 @@ struct TextbookWorkspaceView: View {
 
             Group {
                 if let document {
-                    TextbookPDFReader(document: document) { text, page in
-                        selection = TextbookSelection(text: text, page: page)
+                    TextbookPDFReader(document: document) { updatedSelection in
+                        selection = updatedSelection
+                        composerBlurRequest = UUID()
+                    }
+                    .overlay(alignment: .topLeading) {
+                        GeometryReader { geometry in
+                            if let selection, let source = selectedSource {
+                                selectionToolbar(selection, source: source)
+                                    .position(
+                                        x: min(max(selection.anchor.x, 145 * zoom),
+                                               max(geometry.size.width - 145 * zoom, 145 * zoom)),
+                                        y: min(max(selection.anchor.y > 65 * zoom
+                                            ? selection.anchor.y - 38 * zoom
+                                            : selection.anchor.y + 38 * zoom, 24 * zoom),
+                                               geometry.size.height - 24 * zoom)
+                                    )
+                            }
+                        }
                     }
                 } else if isReading {
                     ProgressView("Opening PDF…")
@@ -153,32 +166,55 @@ struct TextbookWorkspaceView: View {
             }
             .background(Color.clear)
 
-            if let selection, let source = selectedSource {
-                HStack(spacing: 12) {
-                    Text("Page \(selection.page) · \(selection.text)")
-                        .font(LemmaTypography.caption(zoom))
-                        .foregroundStyle(LemmaColors.textSecondary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button("Quote in chat") {
-                        scratchpad.quote(sourceID: source.id, title: source.filename,
-                                         page: selection.page, text: selection.text)
-                        activeTool = .chat
-                        self.selection = nil
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button("Pin excerpt") {
-                        scratchpad.pin(sourceID: source.id, title: source.filename,
-                                       page: selection.page, text: selection.text)
-                        self.selection = nil
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(12)
-                .lemmaComposerGlass(cornerRadius: LemmaRadius.card)
+        }
+    }
+
+    private func selectionToolbar(_ selection: TextbookSelection, source: CourseSourceRecord) -> some View {
+        HStack(spacing: 0) {
+            selectionAction("Copy", symbol: "doc.on.doc") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(selection.text, forType: .string)
+                self.selection = nil
+            }
+            selectionDivider
+            selectionAction("Add to Chat", symbol: "bubble.left") {
+                scratchpad.quote(sourceID: source.id, title: source.filename,
+                                 page: selection.page, text: selection.text)
+                self.selection = nil
+                if activeTool != .home && activeTool != .chat { activeTool = .home }
+                composerFocusRequest = UUID()
+            }
+            selectionDivider
+            selectionAction("Practice", symbol: "function") {
+                self.selection = nil
+                onPracticeSelection(selection.text)
             }
         }
-        .simultaneousGesture(TapGesture().onEnded { isQuestionFocused = false })
+        .padding(.horizontal, 5 * zoom)
+        .frame(height: 38 * zoom)
+        .background(LemmaColors.surfaceElevated,
+                    in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
+        .overlay(RoundedRectangle(cornerRadius: LemmaRadius.control * zoom)
+            .stroke(LemmaColors.border, lineWidth: 1))
+        .shadow(color: .black.opacity(0.18), radius: 9 * zoom, y: 4 * zoom)
+    }
+
+    private func selectionAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.textPrimary)
+                .padding(.horizontal, 9 * zoom)
+                .frame(height: 30 * zoom)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var selectionDivider: some View {
+        Rectangle()
+            .fill(LemmaColors.divider)
+            .frame(width: 1, height: 17 * zoom)
     }
 
     private var scratchpadPane: some View {
@@ -225,60 +261,51 @@ struct TextbookWorkspaceView: View {
         }
         .scrollIndicators(.hidden)
         .frame(height: 50)
-        .onTapGesture { isQuestionFocused = false }
+        .onTapGesture { composerBlurRequest = UUID() }
     }
 
     private var homePane: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        sectionLabel("FROM YOUR TEXTBOOK")
-                        Text("Study this source")
-                            .font(LemmaTypography.sectionTitle(zoom))
-                            .foregroundStyle(LemmaColors.textPrimary)
-                        Text("Keep the page open while you explore an idea.")
-                            .font(LemmaTypography.caption(zoom))
-                            .foregroundStyle(LemmaColors.textSecondary)
-                    }
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
-                        ForEach([TextbookTool.chat, .summary, .flashcards, .quiz]) { tool in
-                            Button { activeTool = tool } label: {
-                                HStack(alignment: .center, spacing: 12) {
-                                    Image(systemName: tool.symbol)
-                                        .font(.system(size: 18 * zoom, weight: .medium))
-                                        .foregroundStyle(tool.tint)
-                                        .frame(width: 42, height: 42)
-                                        .background(tool.tint.opacity(0.14),
-                                                    in: RoundedRectangle(cornerRadius: 11))
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(tool.title)
-                                            .font(LemmaTypography.ui(zoom).weight(.semibold))
-                                            .foregroundStyle(LemmaColors.textPrimary)
-                                        Text(tool.subtitle)
-                                            .font(LemmaTypography.caption(zoom))
-                                            .foregroundStyle(LemmaColors.textSecondary)
-                                    }
-                                    Spacer(minLength: 0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26 * zoom) {
+                        homeContent
+                        pinsSection
+                        if let latest = scratchpad.exchanges.last {
+                            VStack(alignment: .leading, spacing: 16 * zoom) {
+                                HStack {
+                                    sectionLabel("RECENT CONVERSATION")
+                                    Spacer()
+                                    Button("Open full chat") { activeTool = .chat }
+                                        .buttonStyle(.plain)
+                                        .font(LemmaTypography.caption(zoom))
+                                        .foregroundStyle(LemmaColors.toolChat)
                                 }
-                                .padding(14)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(LemmaColors.hoverWash,
-                                            in: RoundedRectangle(cornerRadius: LemmaRadius.card))
-                                .overlay(RoundedRectangle(cornerRadius: LemmaRadius.card)
-                                    .stroke(LemmaColors.hairline, lineWidth: 1))
+                                ScrollView {
+                                    exchangeView(latest)
+                                        .padding(.trailing, 8 * zoom)
+                                }
+                                .frame(height: 250 * zoom)
+                                .scrollIndicators(.automatic)
+                                .id(latest.id)
                             }
-                            .buttonStyle(.plain)
+                            .id("latestExchange")
                         }
                     }
+                    .frame(maxWidth: 700, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.horizontal, 24 * zoom)
+                    .padding(.vertical, 28 * zoom)
                 }
-                .frame(maxWidth: 700, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding(22)
+                .contentShape(Rectangle())
+                .onTapGesture { composerBlurRequest = UUID() }
+                .onChange(of: scratchpad.exchanges) { _, updated in
+                    guard !updated.isEmpty else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo("latestExchange", anchor: .bottom)
+                    }
+                }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { isQuestionFocused = false }
             Rectangle().fill(LemmaColors.divider).frame(height: 1)
             composerFooter
         }
@@ -286,9 +313,17 @@ struct TextbookWorkspaceView: View {
 
     private var chatPane: some View {
         VStack(spacing: 0) {
+            conversationScrollView
+            Rectangle().fill(LemmaColors.divider).frame(height: 1)
+            composerFooter
+        }
+    }
+
+    private var conversationScrollView: some View {
+        ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    if exchanges.isEmpty {
+                VStack(alignment: .leading, spacing: 24) {
+                    if scratchpad.exchanges.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             sectionLabel("ASK LEMMA")
                             Text("Ask about what you’re reading")
@@ -299,36 +334,142 @@ struct TextbookWorkspaceView: View {
                         }
                     }
                     pinsSection
-                    ForEach(exchanges) { exchange in
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(exchange.question)
-                                .font(LemmaTypography.sectionTitle(zoom))
-                            TutorMathText(source: exchange.answer.answer, fontSize: 15 * zoom)
-                            if !exchange.answer.sources.isEmpty {
-                                Text(exchange.answer.sources.map { "\($0.title) · \($0.section)" }
-                                    .joined(separator: "  •  "))
+                    ForEach(scratchpad.exchanges) { exchange in
+                        exchangeView(exchange).id(exchange.id)
+                    }
+                }
+                .frame(maxWidth: 840, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 24 * zoom)
+                .padding(.vertical, 28 * zoom)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { composerBlurRequest = UUID() }
+            .onChange(of: scratchpad.exchanges) { _, updated in
+                guard let last = updated.last else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+            .onChange(of: activeTool) { _, _ in
+                guard let last = scratchpad.exchanges.last else { return }
+                proxy.scrollTo(last.id, anchor: .bottom)
+            }
+        }
+    }
+
+    private var homeContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel("FROM YOUR TEXTBOOK")
+                Text("Study this source")
+                    .font(LemmaTypography.sectionTitle(zoom))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                Text("Keep the page open while you explore an idea.")
+                    .font(LemmaTypography.caption(zoom))
+                    .foregroundStyle(LemmaColors.textSecondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
+                ForEach([TextbookTool.chat, .summary, .flashcards, .quiz]) { tool in
+                    Button { activeTool = tool } label: {
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: tool.symbol)
+                                .font(.system(size: 18 * zoom, weight: .medium))
+                                .foregroundStyle(tool.tint)
+                                .frame(width: 42, height: 42)
+                                .background(tool.tint.opacity(0.14),
+                                            in: RoundedRectangle(cornerRadius: 11))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(tool.title)
+                                    .font(LemmaTypography.ui(zoom).weight(.semibold))
+                                    .foregroundStyle(LemmaColors.textPrimary)
+                                Text(tool.subtitle)
                                     .font(LemmaTypography.caption(zoom))
                                     .foregroundStyle(LemmaColors.textSecondary)
                             }
+                            Spacer(minLength: 0)
                         }
+                        .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(LemmaColors.hoverWash,
+                                    in: RoundedRectangle(cornerRadius: LemmaRadius.card))
+                        .overlay(RoundedRectangle(cornerRadius: LemmaRadius.card)
+                            .stroke(LemmaColors.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func exchangeView(_ exchange: TextbookExchange) -> some View {
+        VStack(alignment: .leading, spacing: 20 * zoom) {
+            HStack {
+                Spacer(minLength: 36 * zoom)
+                VStack(alignment: .trailing, spacing: 8 * zoom) {
+                    if let attachment = exchange.attachment,
+                       let image = NSImage(data: attachment.data) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 220 * zoom, maxHeight: 150 * zoom)
+                            .clipShape(RoundedRectangle(cornerRadius: 9 * zoom))
+                            .accessibilityLabel("Attached image: \(attachment.filename)")
+                    }
+                    Text(exchange.question)
+                        .font(LemmaTypography.ui(zoom))
+                        .foregroundStyle(LemmaColors.textPrimary)
+                        .lineSpacing(4 * zoom)
+                }
+                .padding(.horizontal, 15 * zoom)
+                .padding(.vertical, 12 * zoom)
+                .background(LemmaColors.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
+                .overlay(RoundedRectangle(cornerRadius: LemmaRadius.control * zoom)
+                    .stroke(LemmaColors.border, lineWidth: 1))
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("You")
+
+            if let answer = exchange.answer {
+                VStack(alignment: .leading, spacing: 10 * zoom) {
+                    sectionLabel("LEMMA")
+                    TutorMathText(source: answer.answer, fontSize: 15 * zoom)
+                    if !answer.sources.isEmpty {
+                        TextbookSourcesControl(sources: answer.sources)
+                            .padding(.top, 4 * zoom)
                     }
                 }
-                .frame(maxWidth: 700, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let error = exchange.errorMessage {
+                HStack(spacing: 8 * zoom) {
+                    Image(systemName: "exclamationmark.circle")
+                    Text(error)
+                }
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.error)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 10 * zoom) {
+                    ProgressView().controlSize(.small)
+                    Text("Lemma is thinking…")
+                        .font(LemmaTypography.caption(zoom))
+                        .foregroundStyle(LemmaColors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Lemma is thinking")
             }
-            .contentShape(Rectangle())
-            .onTapGesture { isQuestionFocused = false }
-            Rectangle().fill(LemmaColors.divider).frame(height: 1)
-            composerFooter
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var composerFooter: some View {
         VStack(alignment: .leading, spacing: 0) {
             chatComposer
-            if let error = sources.errorMessage, !error.isEmpty {
+            if let error = sources.errorMessage, !error.isEmpty,
+               scratchpad.exchanges.last?.errorMessage != error {
                 Text(error)
                     .font(LemmaTypography.caption(zoom))
                     .foregroundStyle(LemmaColors.error)
@@ -395,19 +536,16 @@ struct TextbookWorkspaceView: View {
                     .accessibilityLabel("Remove quoted passage")
                 }
             }
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask anything about this textbook…", text: $scratchpad.question, axis: .vertical)
-                    .lineLimit(1...4)
-                    .textFieldStyle(.plain)
-                    .font(LemmaTypography.ui(zoom))
-                    .focused($isQuestionFocused)
-                    .onSubmit { Task { await ask() } }
-                Button { Task { await ask() } } label: { Image(systemName: "arrow.up") }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(scratchpad.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || sources.isAnswering || sources.sources.isEmpty)
-            }
-            Rectangle().fill(LemmaColors.divider).frame(height: 1)
+            PromptComposer(
+                draft: $scratchpad.question,
+                attachment: $scratchpad.attachment,
+                placeholder: "Ask anything about this textbook…",
+                allowedContentTypes: [.png, .jpeg],
+                attachmentDescription: "a PNG or JPEG image",
+                focusRequest: composerFocusRequest,
+                blurRequest: composerBlurRequest,
+                onSend: { Task { await ask() } }
+            )
             HStack(spacing: 6) {
                 Image(systemName: "books.vertical")
                     .foregroundStyle(LemmaColors.toolChat)
@@ -419,10 +557,7 @@ struct TextbookWorkspaceView: View {
             }
             .font(LemmaTypography.caption(zoom))
         }
-        .padding(14)
-        .lemmaComposerGlass(cornerRadius: LemmaRadius.composer)
-        .contentShape(RoundedRectangle(cornerRadius: LemmaRadius.composer))
-        .onTapGesture { isQuestionFocused = true }
+        .padding(.horizontal, 14)
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, sources.errorMessage == nil ? 18 : 4)
@@ -475,22 +610,48 @@ struct TextbookWorkspaceView: View {
     }
 
     private func ask() async {
-        let question = scratchpad.question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { return }
-        activeTool = .chat
-        scratchpad.question = ""
-        if let answer = await sources.answer(scratchpad.questionWithContext(question)) {
-            exchanges.append(TextbookExchange(question: question, answer: answer))
-            scratchpad.finishQuestion()
+        guard !sources.isAnswering, let submitted = scratchpad.submitQuestion() else { return }
+        if let answer = await sources.answer(submitted.prompt, attachment: submitted.attachment) {
+            scratchpad.completeQuestion(submitted.id, answer: answer)
         } else {
-            scratchpad.question = question
+            scratchpad.failQuestion(submitted.id,
+                                    message: sources.errorMessage ?? "A grounded answer couldn’t be generated.")
+        }
+    }
+}
+
+private struct TextbookSourcesControl: View {
+    let sources: [TutorSource]
+    @State private var showsSources = false
+    @Environment(\.workspaceZoom) private var zoom
+
+    var body: some View {
+        Button { showsSources.toggle() } label: {
+            Label("\(sources.count) \(sources.count == 1 ? "source" : "sources")", systemImage: "doc.text")
+                .font(LemmaTypography.caption(zoom))
+                .foregroundStyle(LemmaColors.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .help(sources.map { "\($0.title) · \($0.section)" }.joined(separator: "\n"))
+        .popover(isPresented: $showsSources, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 8 * zoom) {
+                Text("Sources")
+                    .font(LemmaTypography.caption(zoom).weight(.semibold))
+                ForEach(Array(sources.enumerated()), id: \.offset) { _, source in
+                    Text("\(source.title) · \(source.section)")
+                        .font(LemmaTypography.caption(zoom))
+                        .foregroundStyle(LemmaColors.textSecondary)
+                }
+            }
+            .padding(14 * zoom)
+            .frame(maxWidth: 300 * zoom, alignment: .leading)
         }
     }
 }
 
 private struct TextbookPDFReader: NSViewRepresentable {
     let document: PDFDocument
-    let onSelection: (String, Int) -> Void
+    let onSelection: (TextbookSelection?) -> Void
 
     func makeNSView(context: Context) -> SelectionPDFView {
         let view = SelectionPDFView()
@@ -509,11 +670,44 @@ private struct TextbookPDFReader: NSViewRepresentable {
 }
 
 private final class SelectionPDFView: PDFView {
-    var onSelection: ((String, Int) -> Void)?
+    var onSelection: ((TextbookSelection?) -> Void)?
+    private var pendingSelectionUpdate: DispatchWorkItem?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        observeSelectionChanges()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        observeSelectionChanges()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func observeSelectionChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(selectionDidChange(_:)),
+            name: .PDFViewSelectionChanged,
+            object: self
+        )
+    }
+
+    @objc private func selectionDidChange(_ notification: Notification) {
+        // PDFKit's document view handles the drag, so PDFView.mouseUp is not
+        // guaranteed to run. Publish after the selection settles instead.
+        pendingSelectionUpdate?.cancel()
+        let update = DispatchWorkItem { [weak self] in self?.publishSelection() }
+        pendingSelectionUpdate = update
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: update)
+    }
 
     override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
-        publishSelection()
+        publishSelection(at: convert(event.locationInWindow, from: nil))
     }
 
     override func keyUp(with event: NSEvent) {
@@ -521,13 +715,31 @@ private final class SelectionPDFView: PDFView {
         publishSelection()
     }
 
-    private func publishSelection() {
+    override func scrollWheel(with event: NSEvent) {
+        pendingSelectionUpdate?.cancel()
+        onSelection?(nil)
+        super.scrollWheel(with: event)
+    }
+
+    private func publishSelection(at point: NSPoint? = nil) {
         guard let selected = currentSelection,
               let text = selected.string?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty,
               let page = selected.pages.first,
               let index = document?.index(for: page), index >= 0
-        else { return }
-        onSelection?(text, index + 1)
+        else {
+            onSelection?(nil)
+            return
+        }
+        let localAnchor: NSPoint
+        if let point {
+            localAnchor = point
+        } else {
+            let rect = convert(selected.bounds(for: page), from: page)
+            localAnchor = NSPoint(x: rect.midX, y: rect.maxY)
+        }
+        let topDownY = isFlipped ? localAnchor.y : bounds.height - localAnchor.y
+        onSelection?(TextbookSelection(text: text, page: index + 1,
+                                      anchor: CGPoint(x: localAnchor.x, y: topDownY)))
     }
 }

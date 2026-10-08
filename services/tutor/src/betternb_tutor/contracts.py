@@ -75,10 +75,18 @@ class CourseSourceResponse(BaseModel):
     chunk_count: int
 
 
+class CourseQuestionImage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    media_type: str
+    data: str
+
+
 class CourseQuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=20_000)
+    image: CourseQuestionImage | None = None
 
 
 class CourseAnswerResponse(BaseModel):

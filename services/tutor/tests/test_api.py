@@ -65,7 +65,8 @@ class StubCourseSources:
 class StubCourseStudy:
     sources = StubCourseSources()
 
-    def answer(self, course_id, question):
+    def answer(self, course_id, question, image=None):
+        self.last_image = image
         return GroundedAnswer(
             "Use the product rule.",
             [SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
@@ -84,6 +85,34 @@ class StubCourseStudy:
 def course_client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
     return TestClient(create_app(orchestrator, course_study=StubCourseStudy()))
+
+
+def test_course_answer_accepts_an_image_with_the_question() -> None:
+    import base64
+
+    study = StubCourseStudy()
+    orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
+    test_client = TestClient(create_app(orchestrator, course_study=study))
+    image = b"\x89PNG\r\n\x1a\nexample"
+
+    response = test_client.post(
+        "/v1/courses/calculus-1/answers",
+        json={"question": "Explain this diagram", "image": {
+            "media_type": "image/png", "data": base64.b64encode(image).decode("ascii")}},
+    )
+
+    assert response.status_code == 200
+    assert study.last_image == (image, "image/png")
+
+
+def test_course_answer_rejects_invalid_image_content() -> None:
+    response = course_client().post(
+        "/v1/courses/calculus-1/answers",
+        json={"question": "Explain this", "image": {
+            "media_type": "image/png", "data": "bm90IGEgcG5n"}},
+    )
+
+    assert response.status_code == 415
 
 
 def test_health_and_tutor_turn_contract() -> None:

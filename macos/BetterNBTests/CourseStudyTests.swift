@@ -155,7 +155,8 @@ private actor GatedCourseAnswerClient: CourseStudyClient {
         CourseSourceRecord(sourceID: "unused", filename: attachment.filename, pageCount: 1, chunkCount: 1)
     }
 
-    func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
+    func answerCourseQuestion(_ question: String, courseID: String,
+                              attachment: MessageAttachment?) async throws -> GroundedCourseAnswer {
         if question == "first" {
             firstStarted = true
             startedWaiters.forEach { $0.resume() }
@@ -199,7 +200,8 @@ private actor RecordingCourseStudyClient: CourseStudyClient {
         )
     }
 
-    func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
+    func answerCourseQuestion(_ question: String, courseID: String,
+                              attachment: MessageAttachment?) async throws -> GroundedCourseAnswer {
         GroundedCourseAnswer(
             answer: "Differentiate the outer function, then multiply by the inner derivative.",
             sources: [TutorSource(sourceID: "chunk-1", title: "Lecture 4.pdf", section: "Page 3")]

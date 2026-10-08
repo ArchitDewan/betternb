@@ -88,8 +88,15 @@ protocol CourseStudyClient: Sendable {
     func listSources(courseID: String) async throws -> [CourseSourceRecord]
     func readPDF(sourceID: String, courseID: String) async throws -> Data
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
-    func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer
+    func answerCourseQuestion(_ question: String, courseID: String,
+                              attachment: MessageAttachment?) async throws -> GroundedCourseAnswer
     func generateProblems(courseID: String, count: Int) async throws -> [GeneratedCourseProblem]
+}
+
+extension CourseStudyClient {
+    func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
+        try await answerCourseQuestion(question, courseID: courseID, attachment: nil)
+    }
 }
 
 @MainActor
@@ -145,7 +152,7 @@ final class CourseSourceStore {
         }
     }
 
-    func answer(_ question: String) async -> GroundedCourseAnswer? {
+    func answer(_ question: String, attachment: MessageAttachment? = nil) async -> GroundedCourseAnswer? {
         activeAnswerCount += 1
         isAnswering = true
         defer {
@@ -153,7 +160,8 @@ final class CourseSourceStore {
             isAnswering = activeAnswerCount > 0
         }
         do {
-            let answer = try await client.answerCourseQuestion(question, courseID: courseID)
+            let answer = try await client.answerCourseQuestion(question, courseID: courseID,
+                                                               attachment: attachment)
             errorMessage = nil
             return answer
         } catch {

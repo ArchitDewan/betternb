@@ -17,12 +17,49 @@ struct TextbookQuote: Equatable {
     let text: String
 }
 
+struct TextbookExchange: Identifiable, Equatable {
+    let id: UUID
+    let question: String
+    let attachment: MessageAttachment?
+    var answer: GroundedCourseAnswer?
+    var errorMessage: String?
+
+    var isPending: Bool { answer == nil && errorMessage == nil }
+}
+
 @MainActor
 @Observable
 final class TextbookScratchpadStore {
     var question = ""
+    var attachment: MessageAttachment?
     private(set) var activeQuote: TextbookQuote?
     private(set) var pins: [TextbookPin] = []
+    private(set) var exchanges: [TextbookExchange] = []
+
+    func submitQuestion() -> (id: UUID, prompt: String, attachment: MessageAttachment?)? {
+        let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let submittedAttachment = attachment
+        guard !trimmed.isEmpty || submittedAttachment != nil else { return nil }
+        let visibleQuestion = trimmed.isEmpty ? "What is in this image?" : trimmed
+        let prompt = questionWithContext(visibleQuestion)
+        let id = UUID()
+        exchanges.append(TextbookExchange(id: id, question: visibleQuestion,
+                                          attachment: submittedAttachment, answer: nil, errorMessage: nil))
+        question = ""
+        attachment = nil
+        clearQuote()
+        return (id, prompt, submittedAttachment)
+    }
+
+    func completeQuestion(_ id: UUID, answer: GroundedCourseAnswer) {
+        guard let index = exchanges.firstIndex(where: { $0.id == id }) else { return }
+        exchanges[index].answer = answer
+    }
+
+    func failQuestion(_ id: UUID, message: String) {
+        guard let index = exchanges.firstIndex(where: { $0.id == id }) else { return }
+        exchanges[index].errorMessage = message
+    }
 
     func pin(sourceID: String, title: String, page: Int, text: String) {
         let excerpt = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1200))
