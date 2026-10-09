@@ -6,7 +6,7 @@ from betternb_tutor.knowledge import KnowledgeChunk, SearchResult
 from betternb_tutor.orchestrator import TutorOrchestrator
 from betternb_tutor.providers import ModelAssessment
 from betternb_tutor.verification import VerificationResult
-from betternb_tutor.course_study import CourseSource, GeneratedCourseProblem, GroundedAnswer
+from betternb_tutor.course_study import CourseSource, GeneratedCourseProblem, GroundedAnswer, QuizQuestion
 from betternb_tutor.contracts import SourceReference
 
 
@@ -81,6 +81,13 @@ class StubCourseStudy:
             for index in range(count)
         ]
 
+    def generate_quiz(self, course_id, count, difficulty, source_id=None):
+        return (
+            [QuizQuestion(f"Question {index + 1}?", ["A", "B", "C", "D"], 1, "Because B.")
+             for index in range(count)],
+            [SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
+        )
+
 
 def course_client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
@@ -113,6 +120,19 @@ def test_course_answer_rejects_invalid_image_content() -> None:
     )
 
     assert response.status_code == 415
+
+
+def test_course_quiz_validates_settings_and_returns_questions() -> None:
+    test_client = course_client()
+    response = test_client.post(
+        "/v1/courses/calculus-1/quizzes", json={"count": 3, "difficulty": "standard"}
+    )
+    assert response.status_code == 200
+    assert len(response.json()["questions"]) == 3
+    assert response.json()["questions"][0]["correct_index"] == 1
+    assert test_client.post(
+        "/v1/courses/calculus-1/quizzes", json={"count": 99, "difficulty": "standard"}
+    ).status_code == 422
 
 
 def test_health_and_tutor_turn_contract() -> None:

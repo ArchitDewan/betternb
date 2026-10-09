@@ -76,6 +76,20 @@ struct CourseStudyTests {
     }
 
     @Test @MainActor
+    func quizGenerationUsesTheSelectedSourceAndDifficulty() async {
+        let client = RecordingCourseStudyClient()
+        let store = CourseSourceStore(courseID: "calculus-1", client: client)
+
+        let quiz = await store.generateQuiz(sourceID: "source-1", count: 3,
+                                            difficulty: .challenging)
+
+        #expect(quiz?.questions.count == 3)
+        #expect(await client.quizSourceID == "source-1")
+        #expect(await client.quizDifficulty == .challenging)
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test @MainActor
     func groupsAndProblemEditsPreserveIdentityAndSources() {
         let problems = ProblemSetStore()
         let group = problems.addGroup("  Limits  ")!
@@ -183,6 +197,8 @@ private actor GatedCourseAnswerClient: CourseStudyClient {
 }
 
 private actor RecordingCourseStudyClient: CourseStudyClient {
+    private(set) var quizSourceID: String?
+    private(set) var quizDifficulty: QuizDifficulty?
     func listSources(courseID: String) async throws -> [CourseSourceRecord] {
         []
     }
@@ -215,5 +231,19 @@ private actor RecordingCourseStudyClient: CourseStudyClient {
                 sources: [TutorSource(sourceID: "chunk-1", title: "Lecture 4.pdf", section: "Page 3")]
             )
         }
+    }
+
+    func generateQuiz(courseID: String, sourceID: String?, count: Int,
+                      difficulty: QuizDifficulty) async throws -> GeneratedTextbookQuiz {
+        quizSourceID = sourceID
+        quizDifficulty = difficulty
+        return GeneratedTextbookQuiz(
+            questions: (0..<count).map { index in
+                TextbookQuizQuestion(prompt: "Question \(index + 1)",
+                                     options: ["A", "B", "C", "D"], correctIndex: 1,
+                                     explanation: "B is correct.")
+            },
+            sources: []
+        )
     }
 }

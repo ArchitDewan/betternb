@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -107,3 +108,23 @@ class GeneratedProblemResponse(BaseModel):
 
 class GeneratedProblemsResponse(BaseModel):
     problems: list[GeneratedProblemResponse]
+
+
+class GenerateQuizRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: Literal[3, 5, 10] = 5
+    difficulty: Literal["easy", "standard", "challenging"] = "standard"
+    source_id: str | None = None
+
+
+class QuizQuestionResponse(BaseModel):
+    prompt: str
+    options: list[str]
+    correct_index: int
+    explanation: str
+
+
+class GeneratedQuizResponse(BaseModel):
+    questions: list[QuizQuestionResponse]
+    sources: list[SourceReference]
