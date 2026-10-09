@@ -47,6 +47,19 @@ class GeneratedCourseFlashcard:
     sources: list[SourceReference]
 
 
+@dataclass(frozen=True)
+class SummaryIdea:
+    heading: str
+    explanation: str
+    sources: list[SourceReference]
+
+
+@dataclass(frozen=True)
+class GeneratedCourseSummary:
+    overview: str
+    ideas: list[SummaryIdea]
+
+
 class CourseStudyModel(Protocol):
     def answer_course_question(
         self, question: str, context: list[KnowledgeChunk], image: tuple[bytes, str] | None = None
@@ -59,6 +72,8 @@ class CourseStudyModel(Protocol):
     ) -> list[QuizQuestion]: ...
 
     def generate_course_flashcards(self, context: list[KnowledgeChunk], count: int) -> list[dict[str, str]]: ...
+
+    def summarize_course_source(self, context: list[KnowledgeChunk]) -> dict: ...
 
 
 class CourseSourceIndex:
@@ -231,6 +246,29 @@ class CourseStudyService:
             seen_fronts.add(front.casefold())
             cards.append(GeneratedCourseFlashcard(front=front, back=back, sources=_references([chunk])))
         return cards
+
+    def summarize(self, course_id: str, source_id: str) -> GeneratedCourseSummary:
+        context = self.sources.chunks_for_source(course_id, source_id, limit=12)
+        if not context:
+            raise LookupError("Choose a readable course source to summarize.")
+        draft = self._model.summarize_course_source(context)
+        if not isinstance(draft, dict) or not isinstance(draft.get("ideas"), list):
+            raise RuntimeError("The model returned an incomplete summary.")
+        overview = draft.get("overview", "").strip()
+        if not overview or not 1 <= len(draft["ideas"]) <= 6:
+            raise RuntimeError("The model returned an incomplete summary.")
+        chunks_by_id = {chunk.source_id: chunk for chunk in context}
+        ideas: list[SummaryIdea] = []
+        for item in draft["ideas"]:
+            if not isinstance(item, dict):
+                raise RuntimeError("The model returned an invalid key idea.")
+            heading = item.get("heading", "").strip()
+            explanation = item.get("explanation", "").strip()
+            chunk = chunks_by_id.get(item.get("source_id"))
+            if not heading or not explanation or chunk is None:
+                raise RuntimeError("The model returned an invalid key idea or citation.")
+            ideas.append(SummaryIdea(heading, explanation, _references([chunk])))
+        return GeneratedCourseSummary(overview, ideas)
 
 
 def _sample_chunks(chunks: list[KnowledgeChunk], limit: int) -> list[KnowledgeChunk]:

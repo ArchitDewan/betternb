@@ -17,6 +17,9 @@ from .contracts import (
     GeneratedFlashcardResponse,
     GeneratedFlashcardsResponse,
     GenerateFlashcardsRequest,
+    GenerateSummaryRequest,
+    GeneratedSummaryResponse,
+    SummaryIdeaResponse,
     TranscriptionResponse,
     TutorTurnRequest,
     TutorTurnResponse,
@@ -166,6 +169,19 @@ def create_app(
                 GeneratedFlashcardResponse(front=card.front, back=card.back, sources=card.sources)
                 for card in cards
             ])
+
+        @app.post("/v1/courses/{course_id}/summaries", response_model=GeneratedSummaryResponse)
+        def generate_course_summary(course_id: str, request: GenerateSummaryRequest) -> GeneratedSummaryResponse:
+            try:
+                summary = course_study.summarize(course_id, request.source_id)
+            except LookupError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="The summary could not be generated.") from error
+            return GeneratedSummaryResponse(
+                overview=summary.overview,
+                ideas=[SummaryIdeaResponse(**idea.__dict__) for idea in summary.ideas],
+            )
 
     return app
 

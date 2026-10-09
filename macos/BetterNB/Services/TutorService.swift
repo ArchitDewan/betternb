@@ -135,6 +135,15 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         return try decoder.decode(GeneratedFlashcardsEnvelope.self, from: await responseData(for: request)).cards
     }
 
+    func generateSummary(courseID: String, sourceID: String) async throws -> GeneratedTextbookSummary {
+        var request = URLRequest(url: courseURL(courseID, path: "summaries"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(GenerateSummaryRequestEnvelope(sourceID: sourceID))
+        return try decoder.decode(GeneratedTextbookSummary.self, from: await responseData(for: request))
+    }
+
     private func responseData(for request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -220,6 +229,14 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
 
         enum CodingKeys: String, CodingKey {
             case count
+            case sourceID = "source_id"
+        }
+    }
+
+    private struct GenerateSummaryRequestEnvelope: Encodable {
+        let sourceID: String
+
+        enum CodingKeys: String, CodingKey {
             case sourceID = "source_id"
         }
     }

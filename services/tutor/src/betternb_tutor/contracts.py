@@ -145,3 +145,20 @@ class GeneratedFlashcardResponse(BaseModel):
 
 class GeneratedFlashcardsResponse(BaseModel):
     cards: list[GeneratedFlashcardResponse]
+
+
+class GenerateSummaryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str = Field(min_length=1, max_length=128)
+
+
+class SummaryIdeaResponse(BaseModel):
+    heading: str
+    explanation: str
+    sources: list[SourceReference]
+
+
+class GeneratedSummaryResponse(BaseModel):
+    overview: str
+    ideas: list[SummaryIdeaResponse]

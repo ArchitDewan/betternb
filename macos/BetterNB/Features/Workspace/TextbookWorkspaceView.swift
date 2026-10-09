@@ -234,8 +234,10 @@ struct TextbookWorkspaceView: View {
             case .flashcards:
                 TextbookFlashcardsView(flashcards: flashcards, sources: sources,
                                        selectedSource: selectedSource, onManageSources: onManageSources)
-    case .summary:
-                previewPane(for: activeTool)
+            case .summary:
+                TextbookSummaryView(sources: sources, selectedSource: selectedSource,
+                                    onManageSources: onManageSources)
+                    .id(selectedSource?.id)
             }
         }
         .background(Color.clear)
@@ -274,45 +276,27 @@ struct TextbookWorkspaceView: View {
 
     private var homePane: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 26 * zoom) {
-                        homeContent
-                        pinsSection
-                        if let latest = scratchpad.exchanges.last {
-                            VStack(alignment: .leading, spacing: 16 * zoom) {
-                                HStack {
-                                    sectionLabel("RECENT CONVERSATION")
-                                    Spacer()
-                                    Button("Open full chat") { activeTool = .chat }
-                                        .buttonStyle(.plain)
-                                        .font(LemmaTypography.caption(zoom))
-                                        .foregroundStyle(LemmaColors.toolChat)
-                                }
-                                ScrollView {
-                                    exchangeView(latest)
-                                        .padding(.trailing, 8 * zoom)
-                                }
-                                .frame(height: 250 * zoom)
-                                .scrollIndicators(.automatic)
-                                .id(latest.id)
-                            }
-                            .id("latestExchange")
-                        }
-                    }
-                    .frame(maxWidth: 700, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(.horizontal, 24 * zoom)
-                    .padding(.vertical, 28 * zoom)
-                }
+            homeContent
+                .frame(maxWidth: 700, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 24 * zoom)
+                .padding(.vertical, 28 * zoom)
                 .contentShape(Rectangle())
                 .onTapGesture { composerBlurRequest = UUID() }
-                .onChange(of: scratchpad.exchanges) { _, updated in
-                    guard !updated.isEmpty else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("latestExchange", anchor: .bottom)
-                    }
+            if !scratchpad.exchanges.isEmpty || !scratchpad.pins.isEmpty {
+                HStack {
+                    sectionLabel("CONVERSATION")
+                    Spacer()
+                    Button("Open full chat") { activeTool = .chat }
+                        .buttonStyle(.plain)
+                        .font(LemmaTypography.caption(zoom))
+                        .foregroundStyle(LemmaColors.toolChat)
                 }
+                .padding(.horizontal, 24 * zoom)
+                .padding(.bottom, 6 * zoom)
+                conversationScrollView
+            } else {
+                Spacer(minLength: 0)
             }
             Rectangle().fill(LemmaColors.divider).frame(height: 1)
             composerFooter
@@ -416,6 +400,21 @@ struct TextbookWorkspaceView: View {
             HStack {
                 Spacer(minLength: 36 * zoom)
                 VStack(alignment: .trailing, spacing: 8 * zoom) {
+                    if let quote = exchange.quote {
+                        VStack(alignment: .leading, spacing: 5 * zoom) {
+                            Text("\(quote.title) · page \(quote.page)")
+                                .font(LemmaTypography.caption(zoom).weight(.semibold))
+                                .foregroundStyle(LemmaColors.toolChat)
+                            Text(quote.text)
+                                .font(LemmaTypography.caption(zoom))
+                                .foregroundStyle(LemmaColors.textSecondary)
+                                .lineLimit(4)
+                        }
+                        .padding(10 * zoom)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(LemmaColors.toolChat.opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 8 * zoom))
+                    }
                     if let attachment = exchange.attachment,
                        let image = NSImage(data: attachment.data) {
                         Image(nsImage: image)
@@ -432,10 +431,8 @@ struct TextbookWorkspaceView: View {
                 }
                 .padding(.horizontal, 15 * zoom)
                 .padding(.vertical, 12 * zoom)
-                .background(LemmaColors.surfaceElevated,
+                .background(exchange.quote == nil ? LemmaColors.surfaceElevated : Color.clear,
                             in: RoundedRectangle(cornerRadius: LemmaRadius.control * zoom))
-                .overlay(RoundedRectangle(cornerRadius: LemmaRadius.control * zoom)
-                    .stroke(LemmaColors.border, lineWidth: 1))
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("You")
@@ -571,26 +568,6 @@ struct TextbookWorkspaceView: View {
         .padding(.bottom, sources.errorMessage == nil ? 18 : 4)
     }
 
-    private func previewPane(for tool: TextbookTool) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: tool.symbol)
-                .font(.system(size: 25 * zoom))
-                .foregroundStyle(tool.tint)
-                .frame(width: 56, height: 56)
-                .background(tool.tint.opacity(0.14),
-                            in: RoundedRectangle(cornerRadius: LemmaRadius.card))
-            Text(tool.title).font(LemmaTypography.pageTitle(zoom))
-            Text(tool.subtitle)
-                .font(LemmaTypography.body(zoom))
-                .foregroundStyle(LemmaColors.textSecondary)
-            Text("Preview · this study tool is not available yet.")
-                .font(LemmaTypography.caption(zoom))
-                .foregroundStyle(LemmaColors.textTertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(28)
-    }
-
     private func sectionLabel(_ text: String) -> some View {
         Text(text).font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
             .tracking(1.2).foregroundStyle(LemmaColors.textSecondary)
@@ -628,7 +605,7 @@ struct TextbookWorkspaceView: View {
     }
 }
 
-private struct TextbookSourcesControl: View {
+struct TextbookSourcesControl: View {
     let sources: [TutorSource]
     @State private var showsSources = false
     @Environment(\.workspaceZoom) private var zoom
