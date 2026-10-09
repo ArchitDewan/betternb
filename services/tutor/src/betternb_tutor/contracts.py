@@ -107,3 +107,20 @@ class GeneratedProblemResponse(BaseModel):
 
 class GeneratedProblemsResponse(BaseModel):
     problems: list[GeneratedProblemResponse]
+
+
+class GenerateFlashcardsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    count: int = Field(default=5, ge=1, le=15)
+    source_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class GeneratedFlashcardResponse(BaseModel):
+    front: str
+    back: str
+    sources: list[SourceReference]
+
+
+class GeneratedFlashcardsResponse(BaseModel):
+    cards: list[GeneratedFlashcardResponse]

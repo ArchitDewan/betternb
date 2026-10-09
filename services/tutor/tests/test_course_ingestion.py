@@ -1,4 +1,4 @@
-from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService
+from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService, _sample_chunks
 from betternb_tutor.knowledge import KnowledgeChunk
 from betternb_tutor.providers import OpenAIModelGateway
 from types import SimpleNamespace
@@ -28,6 +28,14 @@ class StubStudyModel:
     def generate_course_problems(self, context, count):
         assert context
         return [f"Problem {index + 1} from {context[0].section}" for index in range(count)]
+
+    def generate_course_flashcards(self, context, count):
+        assert context
+        return [
+            {"front": f"What is idea {index + 1}?", "back": "The product rule.",
+             "source_id": context[0].source_id}
+            for index in range(count)
+        ]
 
 
 def _single_page_pdf(text: str) -> bytes:
@@ -154,3 +162,66 @@ def test_course_model_sends_the_image_with_retrieved_excerpts() -> None:
     content = responses.request["input"][0]["content"]
     assert "The chain rule." in content[0]["text"]
     assert content[1]["image_url"].startswith("data:image/png;base64,")
+
+
+def test_flashcards_are_scoped_to_the_selected_pdf_and_cited() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    selected = index.import_pdf("calculus-1", "Product.pdf", _single_page_pdf("The product rule differentiates products."))
+    index.import_pdf("calculus-1", "Limits.pdf", _single_page_pdf("A limit describes nearby values."))
+    service = CourseStudyService(index, StubStudyModel())
+
+    cards = service.generate_flashcards("calculus-1", count=2, source_id=selected.source_id)
+
+    assert len(cards) == 2
+    assert all(card.front and card.back for card in cards)
+    assert all(card.sources[0].title == "Product.pdf" for card in cards)
+    assert all(card.sources[0].section == "Page 1" for card in cards)
+
+
+def test_flashcards_reject_unknown_source_and_bad_model_card() -> None:
+    import pytest
+
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Product.pdf", _single_page_pdf("The product rule differentiates products."))
+    service = CourseStudyService(index, StubStudyModel())
+    with pytest.raises(LookupError, match="source"):
+        service.generate_flashcards("calculus-1", count=1, source_id="missing")
+
+    class BadModel(StubStudyModel):
+        def generate_course_flashcards(self, context, count):
+            return [{"front": "Question", "back": " ", "source_id": "invented"}]
+
+    with pytest.raises(RuntimeError, match="flashcard"):
+        CourseStudyService(index, BadModel()).generate_flashcards("calculus-1", count=1)
+
+
+def test_flashcard_model_uses_source_ids_from_excerpts() -> None:
+    class Responses:
+        request = None
+
+        def parse(self, **kwargs):
+            self.request = kwargs
+            card = SimpleNamespace(model_dump=lambda: {
+                "front": "What is the product rule?", "back": "Differentiate both factors.",
+                "source_id": "source-1"})
+            return SimpleNamespace(output_parsed=SimpleNamespace(cards=[card]))
+
+    responses = Responses()
+    model = OpenAIModelGateway(SimpleNamespace(responses=responses))
+    chunk = KnowledgeChunk("source-1", "Lecture.pdf", "Page 3", "calculus-1", "The product rule.")
+
+    cards = model.generate_course_flashcards([chunk], 1)
+
+    assert cards[0]["source_id"] == "source-1"
+    assert '"source_id": "source-1"' in responses.request["input"]
+
+
+def test_flashcard_context_spans_a_long_source() -> None:
+    chunks = [KnowledgeChunk(f"chunk-{index}", "Book.pdf", f"Page {index}", "course", "Text")
+              for index in range(40)]
+
+    sampled = _sample_chunks(chunks, 12)
+
+    assert len(sampled) == 12
+    assert sampled[0].source_id == "chunk-0"
+    assert sampled[-1].source_id == "chunk-39"
