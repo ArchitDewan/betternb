@@ -96,6 +96,25 @@ class StubCourseStudy:
             sources=[SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
         ) for index in range(count)]
 
+    def summarize(self, course_id, source_id):
+        from betternb_tutor.course_study import GeneratedCourseSummary, SummaryIdea
+
+        assert source_id == "source-1"
+        return GeneratedCourseSummary("A short overview.", [
+            SummaryIdea("Product rule", "Differentiate a product.", [
+                SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")
+            ])
+        ])
+
+
+def test_summary_endpoint_requires_source_and_returns_citations() -> None:
+    response = course_client().post("/v1/courses/calculus-1/summaries", json={"source_id": "source-1"})
+
+    assert response.status_code == 200
+    assert response.json()["overview"] == "A short overview."
+    assert response.json()["ideas"][0]["sources"][0]["section"] == "Page 2"
+    assert course_client().post("/v1/courses/calculus-1/summaries", json={}).status_code == 422
+
 
 def course_client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())

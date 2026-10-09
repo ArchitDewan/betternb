@@ -28,6 +28,8 @@ struct TextbookScratchpadTests {
         #expect(submitted?.prompt.contains("Lecture.pdf, page 7: f(x) = x²") == true)
         #expect(scratchpad.exchanges.count == 1)
         #expect(scratchpad.exchanges[0].question == "What does this mean?")
+        #expect(scratchpad.exchanges[0].quote?.text == "f(x) = x²")
+        #expect(scratchpad.exchanges[0].quote?.page == 7)
         #expect(scratchpad.exchanges[0].isPending)
         #expect(scratchpad.question.isEmpty)
         #expect(scratchpad.activeQuote == nil)

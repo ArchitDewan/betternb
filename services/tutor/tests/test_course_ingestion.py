@@ -43,6 +43,49 @@ class StubStudyModel:
             for index in range(count)
         ]
 
+    def summarize_course_source(self, context):
+        assert context
+        return {
+            "overview": "The source introduces the chain rule.",
+            "ideas": [
+                {"heading": "Chain rule", "explanation": "Differentiate a composition.",
+                 "source_id": context[0].source_id}
+            ],
+        }
+
+
+def test_summary_is_grounded_in_selected_source_and_rejects_unknown_citations() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    first = index.import_pdf("calculus-1", "First.pdf", _single_page_pdf("The chain rule differentiates compositions."))
+    index.import_pdf("calculus-1", "Second.pdf", _single_page_pdf("The product rule differentiates products."))
+    service = CourseStudyService(index, StubStudyModel())
+
+    summary = service.summarize("calculus-1", first.source_id)
+
+    assert summary.overview == "The source introduces the chain rule."
+    assert summary.ideas[0].sources[0].title == "First.pdf"
+    assert all(source.title == "First.pdf" for idea in summary.ideas for source in idea.sources)
+
+    try:
+        service.summarize("calculus-1", "missing")
+    except LookupError:
+        pass
+    else:
+        raise AssertionError("Unknown source must not be summarized")
+
+    class InvalidCitationModel(StubStudyModel):
+        def summarize_course_source(self, context):
+            return {"overview": "A summary.", "ideas": [
+                {"heading": "Invented", "explanation": "Unsupported.", "source_id": "missing.chunk"}
+            ]}
+
+    try:
+        CourseStudyService(index, InvalidCitationModel()).summarize("calculus-1", first.source_id)
+    except RuntimeError as error:
+        assert "citation" in str(error)
+    else:
+        raise AssertionError("Summary citations must come from the selected source excerpts")
+
 
 def _single_page_pdf(text: str) -> bytes:
     content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")

@@ -21,6 +21,7 @@ struct TextbookExchange: Identifiable, Equatable {
     let id: UUID
     let question: String
     let attachment: MessageAttachment?
+    let quote: TextbookQuote?
     var answer: GroundedCourseAnswer?
     var errorMessage: String?
 
@@ -44,7 +45,8 @@ final class TextbookScratchpadStore {
         let prompt = questionWithContext(visibleQuestion)
         let id = UUID()
         exchanges.append(TextbookExchange(id: id, question: visibleQuestion,
-                                          attachment: submittedAttachment, answer: nil, errorMessage: nil))
+                                          attachment: submittedAttachment, quote: activeQuote,
+                                          answer: nil, errorMessage: nil))
         question = ""
         attachment = nil
         clearQuote()

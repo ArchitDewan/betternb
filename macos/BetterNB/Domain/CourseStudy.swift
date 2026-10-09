@@ -94,6 +94,7 @@ protocol CourseStudyClient: Sendable {
     func generateQuiz(courseID: String, sourceID: String?, count: Int,
                       difficulty: QuizDifficulty) async throws -> GeneratedTextbookQuiz
     func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard]
+    func generateSummary(courseID: String, sourceID: String) async throws -> GeneratedTextbookSummary
 }
 
 extension CourseStudyClient {
@@ -108,6 +109,10 @@ extension CourseStudyClient {
 
     func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard] {
         throw TutorServiceError.rejected("Flashcards are unavailable from this course client.")
+    }
+
+    func generateSummary(courseID: String, sourceID: String) async throws -> GeneratedTextbookSummary {
+        throw TutorServiceError.rejected("Summaries are unavailable from this course client.")
     }
 }
 
@@ -125,6 +130,7 @@ final class CourseSourceStore {
     private(set) var isGenerating = false
     private(set) var isGeneratingQuiz = false
     private(set) var isGeneratingFlashcards = false
+    private(set) var isGeneratingSummary = false
     private(set) var errorMessage: String?
 
     init(courseID: String, client: any CourseStudyClient) {
@@ -232,6 +238,27 @@ final class CourseSourceStore {
             return cards
         } catch {
             errorMessage = message(for: error, fallback: "Flashcards couldn’t be generated from this source.")
+            return nil
+        }
+    }
+
+    func generateSummary(sourceID: String) async -> GeneratedTextbookSummary? {
+        guard !isGeneratingSummary else { return nil }
+        isGeneratingSummary = true
+        defer { isGeneratingSummary = false }
+        do {
+            let summary = try await client.generateSummary(courseID: courseID, sourceID: sourceID)
+            guard !summary.overview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !summary.ideas.isEmpty,
+                  summary.ideas.allSatisfy({ !$0.heading.isEmpty && !$0.explanation.isEmpty && !$0.sources.isEmpty })
+            else {
+                errorMessage = "The summary was incomplete. Please try again."
+                return nil
+            }
+            errorMessage = nil
+            return summary
+        } catch {
+            errorMessage = message(for: error, fallback: "The source couldn’t be summarized.")
             return nil
         }
     }

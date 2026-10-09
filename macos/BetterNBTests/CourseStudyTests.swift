@@ -72,6 +72,18 @@ struct CourseStudyTests {
     }
 
     @Test @MainActor
+    func summaryUsesSelectedSourceAndKeepsCitations() async {
+        let client = RecordingCourseStudyClient()
+        let store = CourseSourceStore(courseID: "calculus-1", client: client)
+
+        let summary = await store.generateSummary(sourceID: "source-1")
+
+        #expect(summary?.overview == "A short overview.")
+        #expect(summary?.ideas.first?.sources.first?.section == "Page 3")
+        #expect(await client.lastSummarySourceID == "source-1")
+    }
+
+    @Test @MainActor
     func generatedProblemsRequireReviewBeforeSaving() async {
         let generated = await CourseSourceStore(courseID: "calculus-1", client: RecordingCourseStudyClient())
             .generateProblems(count: 2)
@@ -213,6 +225,7 @@ private actor RecordingCourseStudyClient: CourseStudyClient {
     private(set) var quizSourceID: String?
     private(set) var quizDifficulty: QuizDifficulty?
     private(set) var lastFlashcardSourceID: String?
+    private(set) var lastSummarySourceID: String?
     func listSources(courseID: String) async throws -> [CourseSourceRecord] {
         []
     }
@@ -269,5 +282,13 @@ private actor RecordingCourseStudyClient: CourseStudyClient {
                 sources: [TutorSource(sourceID: "chunk-1", title: "Lecture 4.pdf", section: "Page 3")]
             )
         }
+    }
+
+    func generateSummary(courseID: String, sourceID: String) async throws -> GeneratedTextbookSummary {
+        lastSummarySourceID = sourceID
+        return GeneratedTextbookSummary(overview: "A short overview.", ideas: [
+            TextbookSummaryIdea(heading: "Chain rule", explanation: "Differentiate a composition.",
+                                sources: [TutorSource(sourceID: "chunk-1", title: "Lecture 4.pdf", section: "Page 3")])
+        ])
     }
 }
