@@ -91,11 +91,23 @@ protocol CourseStudyClient: Sendable {
     func answerCourseQuestion(_ question: String, courseID: String,
                               attachment: MessageAttachment?) async throws -> GroundedCourseAnswer
     func generateProblems(courseID: String, count: Int) async throws -> [GeneratedCourseProblem]
+    func generateQuiz(courseID: String, sourceID: String?, count: Int,
+                      difficulty: QuizDifficulty) async throws -> GeneratedTextbookQuiz
+    func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard]
 }
 
 extension CourseStudyClient {
     func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
         try await answerCourseQuestion(question, courseID: courseID, attachment: nil)
+    }
+
+    func generateQuiz(courseID: String, sourceID: String?, count: Int,
+                      difficulty: QuizDifficulty) async throws -> GeneratedTextbookQuiz {
+        throw TutorServiceError.rejected("Quiz generation is not available from this client.")
+    }
+
+    func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard] {
+        throw TutorServiceError.rejected("Flashcards are unavailable from this course client.")
     }
 }
 
@@ -111,6 +123,8 @@ final class CourseSourceStore {
     private(set) var isAnswering = false
     private var activeAnswerCount = 0
     private(set) var isGenerating = false
+    private(set) var isGeneratingQuiz = false
+    private(set) var isGeneratingFlashcards = false
     private(set) var errorMessage: String?
 
     init(courseID: String, client: any CourseStudyClient) {
@@ -181,6 +195,44 @@ final class CourseSourceStore {
         } catch {
             errorMessage = message(for: error, fallback: "Problems couldn’t be generated from these sources.")
             return []
+        }
+    }
+
+    func generateQuiz(sourceID: String?, count: Int,
+                      difficulty: QuizDifficulty) async -> GeneratedTextbookQuiz? {
+        guard !isGeneratingQuiz else { return nil }
+        isGeneratingQuiz = true
+        defer { isGeneratingQuiz = false }
+        do {
+            let quiz = try await client.generateQuiz(courseID: courseID, sourceID: sourceID,
+                                                     count: count, difficulty: difficulty)
+            errorMessage = nil
+            return quiz
+        } catch {
+            errorMessage = message(for: error, fallback: "The quiz couldn’t be generated.")
+            return nil
+        }
+    }
+
+    func generateFlashcards(sourceID: String?, count: Int) async -> [GeneratedTextbookFlashcard]? {
+        guard !isGeneratingFlashcards else { return nil }
+        isGeneratingFlashcards = true
+        defer { isGeneratingFlashcards = false }
+        do {
+            let cards = try await client.generateFlashcards(courseID: courseID, sourceID: sourceID, count: count)
+            guard cards.count == count, cards.allSatisfy({
+                !$0.front.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                !$0.back.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                !$0.sources.isEmpty
+            }) else {
+                errorMessage = "The generated cards were incomplete. Please try again."
+                return nil
+            }
+            errorMessage = nil
+            return cards
+        } catch {
+            errorMessage = message(for: error, fallback: "Flashcards couldn’t be generated from this source.")
+            return nil
         }
     }
 

@@ -10,7 +10,13 @@ from .contracts import (
     CourseSourceResponse,
     GeneratedProblemResponse,
     GeneratedProblemsResponse,
+    GeneratedQuizResponse,
+    GenerateQuizRequest,
+    QuizQuestionResponse,
     GenerateProblemsRequest,
+    GeneratedFlashcardResponse,
+    GeneratedFlashcardsResponse,
+    GenerateFlashcardsRequest,
     TranscriptionResponse,
     TutorTurnRequest,
     TutorTurnResponse,
@@ -130,6 +136,36 @@ def create_app(
                     for problem in problems
                 ]
             )
+
+        @app.post("/v1/courses/{course_id}/quizzes", response_model=GeneratedQuizResponse)
+        def generate_course_quiz(course_id: str, request: GenerateQuizRequest) -> GeneratedQuizResponse:
+            try:
+                questions, sources = course_study.generate_quiz(
+                    course_id, request.count, request.difficulty, source_id=request.source_id
+                )
+            except LookupError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="The quiz could not be generated.") from error
+            return GeneratedQuizResponse(
+                questions=[QuizQuestionResponse(**question.__dict__) for question in questions],
+                sources=sources,
+            )
+
+        @app.post("/v1/courses/{course_id}/flashcards", response_model=GeneratedFlashcardsResponse)
+        def generate_course_flashcards(
+            course_id: str, request: GenerateFlashcardsRequest,
+        ) -> GeneratedFlashcardsResponse:
+            try:
+                cards = course_study.generate_flashcards(course_id, request.count, request.source_id)
+            except LookupError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="Course flashcards could not be generated.") from error
+            return GeneratedFlashcardsResponse(cards=[
+                GeneratedFlashcardResponse(front=card.front, back=card.back, sources=card.sources)
+                for card in cards
+            ])
 
     return app
 

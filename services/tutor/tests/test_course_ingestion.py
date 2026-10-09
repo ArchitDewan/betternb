@@ -1,4 +1,4 @@
-from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService
+from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService, QuizQuestion, _sample_chunks
 from betternb_tutor.knowledge import KnowledgeChunk
 from betternb_tutor.providers import OpenAIModelGateway
 from types import SimpleNamespace
@@ -28,6 +28,20 @@ class StubStudyModel:
     def generate_course_problems(self, context, count):
         assert context
         return [f"Problem {index + 1} from {context[0].section}" for index in range(count)]
+
+    def generate_course_quiz(self, context, count, difficulty):
+        assert context
+        assert difficulty == "standard"
+        return [QuizQuestion(f"Question {index + 1}?", ["A", "B", "C", "D"], 1, "B is correct.")
+                for index in range(count)]
+
+    def generate_course_flashcards(self, context, count):
+        assert context
+        return [
+            {"front": f"What is idea {index + 1}?", "back": "The product rule.",
+             "source_id": context[0].source_id}
+            for index in range(count)
+        ]
 
 
 def _single_page_pdf(text: str) -> bytes:
@@ -154,3 +168,133 @@ def test_course_model_sends_the_image_with_retrieved_excerpts() -> None:
     content = responses.request["input"][0]["content"]
     assert "The chain rule." in content[0]["text"]
     assert content[1]["image_url"].startswith("data:image/png;base64,")
+
+
+def test_generated_quiz_respects_length_and_has_answer_keys() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Lecture.pdf", _single_page_pdf("The chain rule differentiates functions."))
+
+    questions, sources = CourseStudyService(index, StubStudyModel()).generate_quiz(
+        "calculus-1", count=3, difficulty="standard"
+    )
+
+    assert len(questions) == 3
+    assert questions[0].correct_index == 1
+    assert sources[0].title == "Lecture.pdf"
+
+
+def test_generated_quiz_uses_the_selected_pdf() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    first = index.import_pdf("calculus-1", "First.pdf", _single_page_pdf("The chain rule differentiates functions."))
+    second = index.import_pdf("calculus-1", "Second.pdf", _single_page_pdf("The product rule differentiates products."))
+
+    _, sources = CourseStudyService(index, StubStudyModel()).generate_quiz(
+        "calculus-1", count=3, difficulty="standard", source_id=second.source_id
+    )
+
+    assert first.source_id != second.source_id
+    assert [source.title for source in sources] == ["Second.pdf"]
+
+
+def test_generated_quiz_rejects_an_invalid_answer_key() -> None:
+    class InvalidQuizModel(StubStudyModel):
+        def generate_course_quiz(self, context, count, difficulty):
+            return [QuizQuestion("Question?", ["A", "B", "C", "D"], 4, "Because.")]
+
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Lecture.pdf", _single_page_pdf("The chain rule differentiates functions."))
+
+    try:
+        CourseStudyService(index, InvalidQuizModel()).generate_quiz("calculus-1", 3, "easy")
+    except RuntimeError as error:
+        assert "incomplete quiz" in str(error)
+    else:
+        raise AssertionError("An invalid answer key must not reach the student")
+
+
+def test_course_model_receives_quiz_difficulty_and_source_context() -> None:
+    class Responses:
+        request = None
+
+        def parse(self, **kwargs):
+            self.request = kwargs
+            question = SimpleNamespace(model_dump=lambda: {
+                "prompt": "What is the chain rule?",
+                "options": ["A", "B", "C", "D"],
+                "correct_index": 1,
+                "explanation": "Because B.",
+            })
+            return SimpleNamespace(output_parsed=SimpleNamespace(questions=[question]))
+
+    responses = Responses()
+    model = OpenAIModelGateway(SimpleNamespace(responses=responses))
+    chunk = KnowledgeChunk("source-1", "Lecture.pdf", "Page 1", "calculus-1", "The chain rule.")
+
+    questions = model.generate_course_quiz([chunk], 1, "challenging")
+
+    assert questions[0].correct_index == 1
+    assert '"difficulty": "challenging"' in responses.request["input"]
+    assert "The chain rule." in responses.request["input"]
+
+
+def test_flashcards_are_scoped_to_the_selected_pdf_and_cited() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    selected = index.import_pdf("calculus-1", "Product.pdf", _single_page_pdf("The product rule differentiates products."))
+    index.import_pdf("calculus-1", "Limits.pdf", _single_page_pdf("A limit describes nearby values."))
+    service = CourseStudyService(index, StubStudyModel())
+
+    cards = service.generate_flashcards("calculus-1", count=2, source_id=selected.source_id)
+
+    assert len(cards) == 2
+    assert all(card.front and card.back for card in cards)
+    assert all(card.sources[0].title == "Product.pdf" for card in cards)
+    assert all(card.sources[0].section == "Page 1" for card in cards)
+
+
+def test_flashcards_reject_unknown_source_and_bad_model_card() -> None:
+    import pytest
+
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Product.pdf", _single_page_pdf("The product rule differentiates products."))
+    service = CourseStudyService(index, StubStudyModel())
+    with pytest.raises(LookupError, match="source"):
+        service.generate_flashcards("calculus-1", count=1, source_id="missing")
+
+    class BadModel(StubStudyModel):
+        def generate_course_flashcards(self, context, count):
+            return [{"front": "Question", "back": " ", "source_id": "invented"}]
+
+    with pytest.raises(RuntimeError, match="flashcard"):
+        CourseStudyService(index, BadModel()).generate_flashcards("calculus-1", count=1)
+
+
+def test_flashcard_model_uses_source_ids_from_excerpts() -> None:
+    class Responses:
+        request = None
+
+        def parse(self, **kwargs):
+            self.request = kwargs
+            card = SimpleNamespace(model_dump=lambda: {
+                "front": "What is the product rule?", "back": "Differentiate both factors.",
+                "source_id": "source-1"})
+            return SimpleNamespace(output_parsed=SimpleNamespace(cards=[card]))
+
+    responses = Responses()
+    model = OpenAIModelGateway(SimpleNamespace(responses=responses))
+    chunk = KnowledgeChunk("source-1", "Lecture.pdf", "Page 3", "calculus-1", "The product rule.")
+
+    cards = model.generate_course_flashcards([chunk], 1)
+
+    assert cards[0]["source_id"] == "source-1"
+    assert '"source_id": "source-1"' in responses.request["input"]
+
+
+def test_flashcard_context_spans_a_long_source() -> None:
+    chunks = [KnowledgeChunk(f"chunk-{index}", "Book.pdf", f"Page {index}", "course", "Text")
+              for index in range(40)]
+
+    sampled = _sample_chunks(chunks, 12)
+
+    assert len(sampled) == 12
+    assert sampled[0].source_id == "chunk-0"
+    assert sampled[-1].source_id == "chunk-39"

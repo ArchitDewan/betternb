@@ -54,6 +54,8 @@ struct TextbookWorkspaceView: View {
     @State private var documentError: String?
     @State private var isReading = false
     @State private var activeTool: TextbookTool = .home
+    @State private var quiz = TextbookQuizStore()
+    @State private var flashcards = TextbookFlashcardStore()
     @State private var composerFocusRequest: UUID?
     @State private var composerBlurRequest: UUID?
     @Environment(\.workspaceZoom) private var zoom
@@ -226,7 +228,13 @@ struct TextbookWorkspaceView: View {
                 homePane
             case .chat:
                 chatPane
-            case .summary, .flashcards, .quiz:
+            case .quiz:
+                TextbookQuizView(quiz: quiz, sources: sources, selectedSource: selectedSource,
+                                 onManageSources: onManageSources)
+            case .flashcards:
+                TextbookFlashcardsView(flashcards: flashcards, sources: sources,
+                                       selectedSource: selectedSource, onManageSources: onManageSources)
+    case .summary:
                 previewPane(for: activeTool)
             }
         }
