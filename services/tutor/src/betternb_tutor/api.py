@@ -14,6 +14,9 @@ from .contracts import (
     GenerateQuizRequest,
     QuizQuestionResponse,
     GenerateProblemsRequest,
+    GeneratedFlashcardResponse,
+    GeneratedFlashcardsResponse,
+    GenerateFlashcardsRequest,
     TranscriptionResponse,
     TutorTurnRequest,
     TutorTurnResponse,
@@ -148,6 +151,21 @@ def create_app(
                 questions=[QuizQuestionResponse(**question.__dict__) for question in questions],
                 sources=sources,
             )
+
+        @app.post("/v1/courses/{course_id}/flashcards", response_model=GeneratedFlashcardsResponse)
+        def generate_course_flashcards(
+            course_id: str, request: GenerateFlashcardsRequest,
+        ) -> GeneratedFlashcardsResponse:
+            try:
+                cards = course_study.generate_flashcards(course_id, request.count, request.source_id)
+            except LookupError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="Course flashcards could not be generated.") from error
+            return GeneratedFlashcardsResponse(cards=[
+                GeneratedFlashcardResponse(front=card.front, back=card.back, sources=card.sources)
+                for card in cards
+            ])
 
     return app
 

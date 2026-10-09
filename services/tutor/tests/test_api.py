@@ -88,6 +88,14 @@ class StubCourseStudy:
             [SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
         )
 
+    def generate_flashcards(self, course_id, count, source_id=None):
+        from betternb_tutor.course_study import GeneratedCourseFlashcard
+
+        return [GeneratedCourseFlashcard(
+            front=f"Question {index + 1}", back="Answer",
+            sources=[SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
+        ) for index in range(count)]
+
 
 def course_client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
@@ -110,6 +118,19 @@ def test_course_answer_accepts_an_image_with_the_question() -> None:
 
     assert response.status_code == 200
     assert study.last_image == (image, "image/png")
+
+
+def test_flashcard_endpoint_returns_cited_cards_and_validates_count() -> None:
+    response = course_client().post(
+        "/v1/courses/calculus-1/flashcards",
+        json={"count": 5, "source_id": "source-1"},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["cards"]) == 5
+    assert response.json()["cards"][0]["sources"][0]["section"] == "Page 2"
+    invalid = course_client().post("/v1/courses/calculus-1/flashcards", json={"count": 100})
+    assert invalid.status_code == 422
 
 
 def test_course_answer_rejects_invalid_image_content() -> None:

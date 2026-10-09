@@ -59,6 +59,19 @@ struct CourseStudyTests {
     }
 
     @Test @MainActor
+    func generatedFlashcardsKeepTheSelectedSourceAndCitation() async {
+        let client = RecordingCourseStudyClient()
+        let store = CourseSourceStore(courseID: "calculus-1", client: client)
+
+        let cards = await store.generateFlashcards(sourceID: "source-1", count: 2)
+
+        #expect(cards?.count == 2)
+        #expect(cards?.first?.sources.first?.section == "Page 3")
+        #expect(await client.lastFlashcardSourceID == "source-1")
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test @MainActor
     func generatedProblemsRequireReviewBeforeSaving() async {
         let generated = await CourseSourceStore(courseID: "calculus-1", client: RecordingCourseStudyClient())
             .generateProblems(count: 2)
@@ -199,6 +212,7 @@ private actor GatedCourseAnswerClient: CourseStudyClient {
 private actor RecordingCourseStudyClient: CourseStudyClient {
     private(set) var quizSourceID: String?
     private(set) var quizDifficulty: QuizDifficulty?
+    private(set) var lastFlashcardSourceID: String?
     func listSources(courseID: String) async throws -> [CourseSourceRecord] {
         []
     }
@@ -245,5 +259,15 @@ private actor RecordingCourseStudyClient: CourseStudyClient {
             },
             sources: []
         )
+    }
+
+    func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard] {
+        lastFlashcardSourceID = sourceID
+        return (0..<count).map { index in
+            GeneratedTextbookFlashcard(
+                front: "Question \(index + 1)", back: "Answer",
+                sources: [TutorSource(sourceID: "chunk-1", title: "Lecture 4.pdf", section: "Page 3")]
+            )
+        }
     }
 }

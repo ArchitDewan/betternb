@@ -49,4 +49,4 @@ All changes remain isolated on `feat/F018-textbook-quizzes`; no migration or per
 
 ## Outcome
 
-The requested quiz flow is implemented in the isolated F018 worktree. Remaining: human visual/interactive smoke test with a real indexed PDF and live model response, then decide whether to commit/merge. No data migration is needed.
+The requested quiz flow was committed on F018 and integrated with flashcards in F020. Combined automated tests pass. Remaining: human visual/interactive smoke test with a real indexed PDF and live model response. No data migration is needed.

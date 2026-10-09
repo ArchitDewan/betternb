@@ -126,6 +126,15 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         return try decoder.decode(GeneratedTextbookQuiz.self, from: await responseData(for: request))
     }
 
+    func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard] {
+        var request = URLRequest(url: courseURL(courseID, path: "flashcards"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(GenerateFlashcardsRequestEnvelope(count: count, sourceID: sourceID))
+        return try decoder.decode(GeneratedFlashcardsEnvelope.self, from: await responseData(for: request)).cards
+    }
+
     private func responseData(for request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -201,6 +210,16 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
 
         enum CodingKeys: String, CodingKey {
             case count, difficulty
+            case sourceID = "source_id"
+        }
+    }
+
+    private struct GenerateFlashcardsRequestEnvelope: Encodable {
+        let count: Int
+        let sourceID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case count
             case sourceID = "source_id"
         }
     }

@@ -40,6 +40,13 @@ class QuizQuestion:
     explanation: str
 
 
+@dataclass(frozen=True)
+class GeneratedCourseFlashcard:
+    front: str
+    back: str
+    sources: list[SourceReference]
+
+
 class CourseStudyModel(Protocol):
     def answer_course_question(
         self, question: str, context: list[KnowledgeChunk], image: tuple[bytes, str] | None = None
@@ -50,6 +57,8 @@ class CourseStudyModel(Protocol):
     def generate_course_quiz(
         self, context: list[KnowledgeChunk], count: int, difficulty: str
     ) -> list[QuizQuestion]: ...
+
+    def generate_course_flashcards(self, context: list[KnowledgeChunk], count: int) -> list[dict[str, str]]: ...
 
 
 class CourseSourceIndex:
@@ -139,9 +148,15 @@ class CourseSourceIndex:
     def all_chunks(self, course_id: str, limit: int = 8) -> list[KnowledgeChunk]:
         return self._chunks.get(course_id, [])[:limit]
 
-    def chunks_for_source(self, course_id: str, source_id: str, limit: int = 10) -> list[KnowledgeChunk]:
-        return [chunk for chunk in self._chunks.get(course_id, [])
-                if chunk.source_id.startswith(f"{source_id}.")][:limit]
+    def sample_chunks(self, course_id: str, limit: int = 12) -> list[KnowledgeChunk]:
+        return _sample_chunks(self._chunks.get(course_id, []), limit)
+
+    def chunks_for_source(self, course_id: str, source_id: str, limit: int = 12) -> list[KnowledgeChunk]:
+        if source_id not in self._sources.get(course_id, {}):
+            return []
+        candidates = [chunk for chunk in self._chunks.get(course_id, [])
+                      if chunk.source_id.startswith(f"{source_id}.")]
+        return _sample_chunks(candidates, limit)
 
 
 class CourseStudyService:
@@ -190,6 +205,42 @@ class CourseStudyService:
         ):
             raise RuntimeError("The model returned an incomplete quiz.")
         return questions, _references(context)
+
+    def generate_flashcards(
+        self, course_id: str, count: int = 5, source_id: str | None = None
+    ) -> list[GeneratedCourseFlashcard]:
+        context = (self.sources.chunks_for_source(course_id, source_id)
+                   if source_id else self.sources.sample_chunks(course_id))
+        if not context:
+            raise LookupError("Add a readable course source or choose an available source before generating flashcards.")
+        drafts = self._model.generate_course_flashcards(context, count)
+        if len(drafts) != count:
+            raise RuntimeError("The model returned the wrong number of flashcards.")
+        chunks_by_id = {chunk.source_id: chunk for chunk in context}
+        cards: list[GeneratedCourseFlashcard] = []
+        seen_fronts: set[str] = set()
+        for draft in drafts:
+            if not isinstance(draft, dict):
+                raise RuntimeError("The model returned an invalid flashcard.")
+            front, back = draft.get("front", "").strip(), draft.get("back", "").strip()
+            chunk = chunks_by_id.get(draft.get("source_id"))
+            if not front or not back or chunk is None:
+                raise RuntimeError("The model returned an invalid flashcard or citation.")
+            if front.casefold() in seen_fronts:
+                raise RuntimeError("The model returned a duplicate flashcard.")
+            seen_fronts.add(front.casefold())
+            cards.append(GeneratedCourseFlashcard(front=front, back=back, sources=_references([chunk])))
+        return cards
+
+
+def _sample_chunks(chunks: list[KnowledgeChunk], limit: int) -> list[KnowledgeChunk]:
+    if limit < 1:
+        return []
+    if len(chunks) <= limit:
+        return chunks
+    if limit == 1:
+        return [chunks[0]]
+    return [chunks[round(index * (len(chunks) - 1) / (limit - 1))] for index in range(limit)]
 
 
 def _chunk_text(text: str, size: int = 220, overlap: int = 30) -> list[str]:
