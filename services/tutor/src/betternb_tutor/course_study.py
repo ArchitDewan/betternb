@@ -32,12 +32,24 @@ class GeneratedCourseProblem:
     sources: list[SourceReference]
 
 
+@dataclass(frozen=True)
+class QuizQuestion:
+    prompt: str
+    options: list[str]
+    correct_index: int
+    explanation: str
+
+
 class CourseStudyModel(Protocol):
     def answer_course_question(
         self, question: str, context: list[KnowledgeChunk], image: tuple[bytes, str] | None = None
     ) -> str: ...
 
     def generate_course_problems(self, context: list[KnowledgeChunk], count: int) -> list[str]: ...
+
+    def generate_course_quiz(
+        self, context: list[KnowledgeChunk], count: int, difficulty: str
+    ) -> list[QuizQuestion]: ...
 
 
 class CourseSourceIndex:
@@ -127,6 +139,10 @@ class CourseSourceIndex:
     def all_chunks(self, course_id: str, limit: int = 8) -> list[KnowledgeChunk]:
         return self._chunks.get(course_id, [])[:limit]
 
+    def chunks_for_source(self, course_id: str, source_id: str, limit: int = 10) -> list[KnowledgeChunk]:
+        return [chunk for chunk in self._chunks.get(course_id, [])
+                if chunk.source_id.startswith(f"{source_id}.")][:limit]
+
 
 class CourseStudyService:
     def __init__(self, sources: CourseSourceIndex, model: CourseStudyModel) -> None:
@@ -154,6 +170,26 @@ class CourseStudyService:
             raise RuntimeError("The model returned the wrong number of problems.")
         sources = _references(context)
         return [GeneratedCourseProblem(prompt=prompt.strip(), sources=sources) for prompt in prompts]
+
+    def generate_quiz(
+        self, course_id: str, count: int, difficulty: str, source_id: str | None = None
+    ) -> tuple[list[QuizQuestion], list[SourceReference]]:
+        context = (self.sources.chunks_for_source(course_id, source_id, limit=10)
+                   if source_id else self.sources.all_chunks(course_id, limit=10))
+        if not context:
+            raise LookupError("Add a readable course source before generating a quiz.")
+        questions = self._model.generate_course_quiz(context, count, difficulty)
+        if len(questions) != count or any(
+            not question.prompt.strip()
+            or len(question.options) != 4
+            or len({option.strip() for option in question.options}) != 4
+            or any(not option.strip() for option in question.options)
+            or not 0 <= question.correct_index < 4
+            or not question.explanation.strip()
+            for question in questions
+        ):
+            raise RuntimeError("The model returned an incomplete quiz.")
+        return questions, _references(context)
 
 
 def _chunk_text(text: str, size: int = 220, overlap: int = 30) -> list[str]:

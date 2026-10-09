@@ -1,4 +1,4 @@
-from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService
+from betternb_tutor.course_study import CourseSourceIndex, CourseStudyService, QuizQuestion
 from betternb_tutor.knowledge import KnowledgeChunk
 from betternb_tutor.providers import OpenAIModelGateway
 from types import SimpleNamespace
@@ -28,6 +28,12 @@ class StubStudyModel:
     def generate_course_problems(self, context, count):
         assert context
         return [f"Problem {index + 1} from {context[0].section}" for index in range(count)]
+
+    def generate_course_quiz(self, context, count, difficulty):
+        assert context
+        assert difficulty == "standard"
+        return [QuizQuestion(f"Question {index + 1}?", ["A", "B", "C", "D"], 1, "B is correct.")
+                for index in range(count)]
 
 
 def _single_page_pdf(text: str) -> bytes:
@@ -154,3 +160,70 @@ def test_course_model_sends_the_image_with_retrieved_excerpts() -> None:
     content = responses.request["input"][0]["content"]
     assert "The chain rule." in content[0]["text"]
     assert content[1]["image_url"].startswith("data:image/png;base64,")
+
+
+def test_generated_quiz_respects_length_and_has_answer_keys() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Lecture.pdf", _single_page_pdf("The chain rule differentiates functions."))
+
+    questions, sources = CourseStudyService(index, StubStudyModel()).generate_quiz(
+        "calculus-1", count=3, difficulty="standard"
+    )
+
+    assert len(questions) == 3
+    assert questions[0].correct_index == 1
+    assert sources[0].title == "Lecture.pdf"
+
+
+def test_generated_quiz_uses_the_selected_pdf() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    first = index.import_pdf("calculus-1", "First.pdf", _single_page_pdf("The chain rule differentiates functions."))
+    second = index.import_pdf("calculus-1", "Second.pdf", _single_page_pdf("The product rule differentiates products."))
+
+    _, sources = CourseStudyService(index, StubStudyModel()).generate_quiz(
+        "calculus-1", count=3, difficulty="standard", source_id=second.source_id
+    )
+
+    assert first.source_id != second.source_id
+    assert [source.title for source in sources] == ["Second.pdf"]
+
+
+def test_generated_quiz_rejects_an_invalid_answer_key() -> None:
+    class InvalidQuizModel(StubStudyModel):
+        def generate_course_quiz(self, context, count, difficulty):
+            return [QuizQuestion("Question?", ["A", "B", "C", "D"], 4, "Because.")]
+
+    index = CourseSourceIndex(KeywordEmbeddings())
+    index.import_pdf("calculus-1", "Lecture.pdf", _single_page_pdf("The chain rule differentiates functions."))
+
+    try:
+        CourseStudyService(index, InvalidQuizModel()).generate_quiz("calculus-1", 3, "easy")
+    except RuntimeError as error:
+        assert "incomplete quiz" in str(error)
+    else:
+        raise AssertionError("An invalid answer key must not reach the student")
+
+
+def test_course_model_receives_quiz_difficulty_and_source_context() -> None:
+    class Responses:
+        request = None
+
+        def parse(self, **kwargs):
+            self.request = kwargs
+            question = SimpleNamespace(model_dump=lambda: {
+                "prompt": "What is the chain rule?",
+                "options": ["A", "B", "C", "D"],
+                "correct_index": 1,
+                "explanation": "Because B.",
+            })
+            return SimpleNamespace(output_parsed=SimpleNamespace(questions=[question]))
+
+    responses = Responses()
+    model = OpenAIModelGateway(SimpleNamespace(responses=responses))
+    chunk = KnowledgeChunk("source-1", "Lecture.pdf", "Page 1", "calculus-1", "The chain rule.")
+
+    questions = model.generate_course_quiz([chunk], 1, "challenging")
+
+    assert questions[0].correct_index == 1
+    assert '"difficulty": "challenging"' in responses.request["input"]
+    assert "The chain rule." in responses.request["input"]
