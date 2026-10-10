@@ -74,6 +74,8 @@ class CourseSourceResponse(BaseModel):
     filename: str
     page_count: int
     chunk_count: int
+    media_type: str = "application/pdf"
+    unreadable_pages: list[int] = Field(default_factory=list)
 
 
 class CourseQuestionImage(BaseModel):
@@ -99,6 +101,7 @@ class GenerateProblemsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     count: int = Field(default=3, ge=1, le=8)
+    source_id: str | None = None
 
 
 class GeneratedProblemResponse(BaseModel):

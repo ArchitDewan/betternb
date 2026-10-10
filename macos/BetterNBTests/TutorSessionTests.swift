@@ -373,6 +373,26 @@ struct TutorSessionTests {
     }
 
     @Test @MainActor
+    func savedProblemResumesItsAttemptAfterReload() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lemma-attempts-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let client = RecordingTutorClient()
+        let problemID = UUID()
+        let threads = StudyThreadStore(storageURL: url, tutorClient: client)
+        let tutor = TutorSessionStore(client: client, minimumResponseDelay: .zero)
+        let id = threads.startPractice(prompt: "Differentiate x squared", tutor: tutor, problemID: problemID)
+        #expect(await tutor.beginProblem("Differentiate x squared"))
+        #expect(await tutor.submit("2x", intent: .check))
+
+        let restored = StudyThreadStore(storageURL: url, tutorClient: client)
+        #expect(restored.latestPractice(for: problemID) == id)
+        #expect(restored.activate(id) == .practice)
+        #expect(restored.activeTutor?.problem == "Differentiate x squared")
+        #expect(restored.activeTutor?.entries.contains { $0.text == "2x" } == true)
+    }
+
+    @Test @MainActor
     func worksheetMapsCheckedStepsAndInspectorFromTutorFeedback() async {
         let client = RecordingTutorClient()
         let store = TutorSessionStore(client: client, minimumResponseDelay: .zero)

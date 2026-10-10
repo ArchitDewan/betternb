@@ -1,12 +1,15 @@
 import hashlib
+import json
 import math
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 from typing import Protocol
 
 from pypdf import PdfReader
+import pypdfium2 as pdfium
 
 from .contracts import SourceReference
 from .knowledge import EmbeddingGateway, KnowledgeChunk, SearchResult
@@ -18,6 +21,8 @@ class CourseSource:
     filename: str
     page_count: int
     chunk_count: int
+    media_type: str = "application/pdf"
+    unreadable_pages: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,10 @@ class CourseStudyModel(Protocol):
 
     def generate_course_problems(self, context: list[KnowledgeChunk], count: int) -> list[str]: ...
 
+    def transcribe_worksheet_page(self, data: bytes, media_type: str) -> str: ...
+
+    def extract_worksheet_questions(self, page_text: str) -> list[str]: ...
+
     def generate_course_quiz(
         self, context: list[KnowledgeChunk], count: int, difficulty: str
     ) -> list[QuizQuestion]: ...
@@ -77,12 +86,24 @@ class CourseStudyModel(Protocol):
 
 
 class CourseSourceIndex:
-    def __init__(self, embeddings: EmbeddingGateway) -> None:
+    def __init__(self, embeddings: EmbeddingGateway, storage_dir: Path | None = None) -> None:
         self._embeddings = embeddings
+        self._storage_dir = storage_dir
         self._sources: dict[str, dict[str, CourseSource]] = {}
         self._documents: dict[str, dict[str, bytes]] = {}
+        self._page_texts: dict[str, dict[str, list[str]]] = {}
         self._chunks: dict[str, list[KnowledgeChunk]] = {}
         self._vectors: dict[str, list[list[float]]] = {}
+        if storage_dir is not None and storage_dir.exists():
+            for metadata_file in storage_dir.glob("*.json"):
+                metadata = json.loads(metadata_file.read_text())
+                document_file = metadata_file.with_suffix(".bin")
+                if document_file.exists():
+                    self.import_pages(
+                        metadata["course_id"], metadata["filename"], document_file.read_bytes(),
+                        metadata["media_type"], metadata["pages"],
+                        unreadable_pages=metadata.get("unreadable_pages", []), persist=False,
+                    )
 
     def import_pdf(self, course_id: str, filename: str, data: bytes) -> CourseSource:
         safe_filename = Path(filename).name.strip()
@@ -97,15 +118,30 @@ class CourseSourceIndex:
         if len(reader.pages) > 500:
             raise ValueError("Choose a PDF with 500 pages or fewer.")
 
-        source_id = "course." + hashlib.sha256(
-            course_id.encode() + b"\0" + safe_filename.encode() + b"\0" + data
-        ).hexdigest()[:20]
-        chunks: list[KnowledgeChunk] = []
+        pages: list[str] = []
         for page_index, page in enumerate(reader.pages, start=1):
             try:
                 text = _normalize_text(page.extract_text() or "")
             except Exception as error:
                 raise ValueError(f"Text could not be extracted from page {page_index}.") from error
+            pages.append(text)
+        if not any(pages):
+            raise ValueError("No readable text was found. Scanned PDFs need OCR, which is not supported yet.")
+        return self.import_pages(course_id, safe_filename, data, "application/pdf", pages)
+
+    def import_pages(
+        self, course_id: str, filename: str, data: bytes, media_type: str,
+        pages: list[str], *, unreadable_pages: list[int] | None = None,
+        persist: bool = True,
+    ) -> CourseSource:
+        safe_filename = Path(filename).name.strip()
+        if not safe_filename or not pages or not any(page.strip() for page in pages):
+            raise ValueError("No readable questions were found in the worksheet.")
+        source_id = "course." + hashlib.sha256(
+            course_id.encode() + b"\0" + safe_filename.encode() + b"\0" + data
+        ).hexdigest()[:20]
+        chunks: list[KnowledgeChunk] = []
+        for page_index, text in enumerate(pages, start=1):
             for chunk_index, content in enumerate(_chunk_text(text), start=1):
                 chunks.append(
                     KnowledgeChunk(
@@ -116,14 +152,13 @@ class CourseSourceIndex:
                         content=content,
                     )
                 )
-        if not chunks:
-            raise ValueError("No readable text was found. Scanned PDFs need OCR, which is not supported yet.")
-
         source = CourseSource(
             source_id=source_id,
             filename=safe_filename,
-            page_count=len(reader.pages),
+            page_count=len(pages),
             chunk_count=len(chunks),
+            media_type=media_type,
+            unreadable_pages=unreadable_pages or [],
         )
         existing_chunks = [
             chunk
@@ -135,6 +170,22 @@ class CourseSourceIndex:
         self._vectors[course_id] = self._embeddings.embed([_index_text(chunk) for chunk in combined_chunks])
         self._sources.setdefault(course_id, {})[source_id] = source
         self._documents.setdefault(course_id, {})[source_id] = data
+        self._page_texts.setdefault(course_id, {})[source_id] = pages
+        if persist and self._storage_dir is not None:
+            self._storage_dir.mkdir(parents=True, exist_ok=True)
+            stem = hashlib.sha256((course_id + ":" + source_id).encode()).hexdigest()
+            document_file = self._storage_dir / f"{stem}.bin"
+            metadata_file = self._storage_dir / f"{stem}.json"
+            temporary_document = document_file.with_suffix(".bin.tmp")
+            temporary_metadata = metadata_file.with_suffix(".json.tmp")
+            temporary_document.write_bytes(data)
+            temporary_metadata.write_text(json.dumps({
+                "course_id": course_id, "filename": safe_filename,
+                "media_type": media_type, "pages": pages,
+                "unreadable_pages": unreadable_pages or [],
+            }))
+            os.replace(temporary_document, document_file)
+            os.replace(temporary_metadata, metadata_file)
         return source
 
     def list_sources(self, course_id: str) -> list[CourseSource]:
@@ -142,6 +193,13 @@ class CourseSourceIndex:
 
     def get_document(self, course_id: str, source_id: str) -> bytes | None:
         return self._documents.get(course_id, {}).get(source_id)
+
+    def source(self, course_id: str, source_id: str) -> CourseSource | None:
+        return self._sources.get(course_id, {}).get(source_id)
+
+    def pages_for_source(self, course_id: str, source_id: str) -> list[tuple[int, str]]:
+        pages = self._page_texts.get(course_id, {}).get(source_id, [])
+        return list(enumerate(pages, start=1))
 
     def search(self, course_id: str, query: str, limit: int = 5) -> list[SearchResult]:
         chunks = self._chunks.get(course_id, [])
@@ -191,8 +249,55 @@ class CourseStudyService:
             sources=_references(context),
         )
 
-    def generate_problems(self, course_id: str, count: int = 3) -> list[GeneratedCourseProblem]:
-        context = self.sources.all_chunks(course_id)
+    def import_worksheet(self, course_id: str, filename: str, data: bytes, media_type: str) -> CourseSource:
+        if media_type == "application/pdf":
+            try:
+                reader = PdfReader(BytesIO(data), strict=False)
+            except Exception as error:
+                raise ValueError("The PDF could not be read.") from error
+            if reader.is_encrypted:
+                raise ValueError("Password-protected PDFs are not supported.")
+            if not 1 <= len(reader.pages) <= 30:
+                raise ValueError("Choose a worksheet with 30 pages or fewer.")
+            pages = []
+            unreadable_pages = []
+            document = pdfium.PdfDocument(data)
+            for page_index, page in enumerate(reader.pages):
+                text = _normalize_text(page.extract_text() or "")
+                image = document[page_index].render(scale=2).to_pil()
+                output = BytesIO()
+                image.save(output, format="PNG")
+                visual_text = self._model.transcribe_worksheet_page(output.getvalue(), "image/png").strip()
+                if visual_text:
+                    text = visual_text
+                if not text:
+                    unreadable_pages.append(page_index + 1)
+                pages.append(text)
+        elif media_type in {"image/png", "image/jpeg"}:
+            pages = [self._model.transcribe_worksheet_page(data, media_type).strip()]
+            unreadable_pages = [1] if not pages[0] else []
+        else:
+            raise ValueError("Choose a PDF, PNG, or JPEG worksheet.")
+        return self.sources.import_pages(course_id, filename, data, media_type, pages,
+                                         unreadable_pages=unreadable_pages)
+
+    def extract_problems(self, course_id: str, source_id: str) -> list[GeneratedCourseProblem]:
+        source = self.sources.source(course_id, source_id)
+        if source is None:
+            raise LookupError("Worksheet not found in this course.")
+        result: list[GeneratedCourseProblem] = []
+        for page, text in self.sources.pages_for_source(course_id, source_id):
+            for prompt in self._model.extract_worksheet_questions(text):
+                trimmed = prompt.strip()
+                if trimmed:
+                    result.append(GeneratedCourseProblem(trimmed, [SourceReference(
+                        source_id=f"{source_id}.p{page}", title=source.filename, section=f"Page {page}",
+                    )]))
+        return result
+
+    def generate_problems(self, course_id: str, count: int = 3, source_id: str | None = None) -> list[GeneratedCourseProblem]:
+        context = (self.sources.chunks_for_source(course_id, source_id, limit=12)
+                   if source_id else self.sources.all_chunks(course_id))
         if not context:
             raise LookupError("Add a readable course source before generating problems.")
         prompts = self._model.generate_course_problems(context, count)

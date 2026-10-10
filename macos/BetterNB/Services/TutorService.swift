@@ -89,6 +89,25 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         return try decoder.decode(CourseSourceRecord.self, from: await responseData(for: request))
     }
 
+    func importWorksheet(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {
+        let boundary = "Lemma-\(UUID().uuidString)"
+        var request = URLRequest(url: courseURL(courseID, path: "worksheets"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 600
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = makeMultipartBody(attachment: attachment, fieldName: "document", boundary: boundary)
+        return try decoder.decode(CourseSourceRecord.self, from: await responseData(for: request))
+    }
+
+    func extractProblems(courseID: String, sourceID: String) async throws -> [GeneratedCourseProblem] {
+        var request = URLRequest(url: courseURL(courseID, path: "sources/\(sourceID)/problems/extract"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try decoder.decode(GeneratedProblemsEnvelope.self,
+                                  from: await responseData(for: request)).problems
+    }
+
     func answerCourseQuestion(_ question: String, courseID: String,
                               attachment: MessageAttachment? = nil) async throws -> GroundedCourseAnswer {
         var request = URLRequest(url: courseURL(courseID, path: "answers"))
@@ -103,11 +122,19 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
     }
 
     func generateProblems(courseID: String, count: Int) async throws -> [GeneratedCourseProblem] {
+        try await generateProblems(courseID: courseID, sourceID: nil, count: count)
+    }
+
+    func generateProblems(courseID: String, sourceID: String, count: Int) async throws -> [GeneratedCourseProblem] {
+        try await generateProblems(courseID: courseID, sourceID: Optional(sourceID), count: count)
+    }
+
+    private func generateProblems(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedCourseProblem] {
         var request = URLRequest(url: courseURL(courseID, path: "problems"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try encoder.encode(GenerateProblemsRequestEnvelope(count: count))
+        request.httpBody = try encoder.encode(GenerateProblemsRequestEnvelope(count: count, sourceID: sourceID))
         return try decoder.decode(
             GeneratedProblemsEnvelope.self,
             from: await responseData(for: request)
@@ -210,6 +237,12 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
 
     private struct GenerateProblemsRequestEnvelope: Encodable {
         let count: Int
+        let sourceID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case count
+            case sourceID = "source_id"
+        }
     }
 
     private struct GenerateQuizRequestEnvelope: Encodable {

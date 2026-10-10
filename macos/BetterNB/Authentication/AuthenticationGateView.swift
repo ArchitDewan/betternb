@@ -6,8 +6,9 @@ struct AuthenticationGateView: View {
 
     var body: some View {
         Group {
-            if session.state.unlocksWorkspace {
-                WorkspaceShellView()
+            if let account = session.state.account {
+                WorkspaceShellView(accountID: account.id)
+                    .id(account.id)
                     .environmentObject(session)
             } else {
                 signInSurface

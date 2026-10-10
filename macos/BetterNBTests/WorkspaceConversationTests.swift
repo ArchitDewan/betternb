@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import PDFKit
 import Testing
 @testable import BetterNB
 
@@ -88,5 +90,32 @@ struct WorkspaceConversationTests {
                 data: Data(repeating: 0, count: MessageAttachment.maximumBytes + 1)
             )
         }
+    }
+
+    @Test
+    func multipleWorksheetPagesBecomeOnePDF() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 120, pixelsHigh: 90, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        let image = NSImage(size: NSSize(width: 120, height: 90))
+        image.addRepresentation(bitmap)
+        let page = try #require(PDFPage(image: image))
+        let first = PDFDocument()
+        first.insert(page, at: 0)
+        let firstURL = directory.appendingPathComponent("first.pdf")
+        try #require(first.dataRepresentation()).write(to: firstURL)
+        let secondURL = directory.appendingPathComponent("second.pdf")
+        try #require(first.dataRepresentation()).write(to: secondURL)
+
+        let attachment = try MessageAttachment.importingWorksheetFiles([firstURL, secondURL])
+        #expect(attachment.mediaType == "application/pdf")
+        #expect(PDFDocument(data: attachment.data)?.pageCount == 2)
     }
 }

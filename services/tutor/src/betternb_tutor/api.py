@@ -3,6 +3,7 @@ import binascii
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from .contracts import (
     CourseAnswerResponse,
@@ -84,7 +85,8 @@ def create_app(
             document = course_study.sources.get_document(course_id, source_id)
             if document is None:
                 raise HTTPException(status_code=404, detail="Course source not found.")
-            return Response(content=document, media_type="application/pdf")
+            source = course_study.sources.source(course_id, source_id)
+            return Response(content=document, media_type=source.media_type if source else "application/octet-stream")
 
         @app.post("/v1/courses/{course_id}/sources", response_model=CourseSourceResponse)
         async def import_course_source(course_id: str, document: UploadFile = File(...)) -> CourseSourceResponse:
@@ -98,6 +100,42 @@ def create_app(
             except ValueError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
             return CourseSourceResponse(**source.__dict__)
+
+        @app.post("/v1/courses/{course_id}/worksheets", response_model=CourseSourceResponse)
+        async def import_worksheet(course_id: str, document: UploadFile = File(...)) -> CourseSourceResponse:
+            if document.content_type not in {"application/pdf", *SUPPORTED_IMAGE_TYPES}:
+                raise HTTPException(status_code=415, detail="Choose a PDF, PNG, or JPEG worksheet.")
+            limit = MAXIMUM_PDF_BYTES if document.content_type == "application/pdf" else MAXIMUM_IMAGE_BYTES
+            data = await document.read(limit + 1)
+            if not data or len(data) > limit:
+                raise HTTPException(status_code=413, detail="The worksheet is empty or too large.")
+            if document.content_type == "application/pdf" and not data.startswith(b"%PDF"):
+                raise HTTPException(status_code=415, detail="The file is not a valid PDF.")
+            if document.content_type in SUPPORTED_IMAGE_TYPES and not _has_valid_signature(data, document.content_type):
+                raise HTTPException(status_code=415, detail="The file is not a valid PNG or JPEG image.")
+            try:
+                source = await run_in_threadpool(
+                    course_study.import_worksheet,
+                    course_id, document.filename or "Worksheet", data, document.content_type,
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="The worksheet could not be read.") from error
+            return CourseSourceResponse(**source.__dict__)
+
+        @app.post("/v1/courses/{course_id}/sources/{source_id}/problems/extract",
+                  response_model=GeneratedProblemsResponse)
+        def extract_course_problems(course_id: str, source_id: str) -> GeneratedProblemsResponse:
+            try:
+                problems = course_study.extract_problems(course_id, source_id)
+            except LookupError as error:
+                raise HTTPException(status_code=404, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="Questions could not be extracted.") from error
+            return GeneratedProblemsResponse(problems=[
+                GeneratedProblemResponse(prompt=item.prompt, sources=item.sources) for item in problems
+            ])
 
         @app.post("/v1/courses/{course_id}/answers", response_model=CourseAnswerResponse)
         def answer_course_question(course_id: str, request: CourseQuestionRequest) -> CourseAnswerResponse:
@@ -128,7 +166,7 @@ def create_app(
             request: GenerateProblemsRequest,
         ) -> GeneratedProblemsResponse:
             try:
-                problems = course_study.generate_problems(course_id, request.count)
+                problems = course_study.generate_problems(course_id, request.count, request.source_id)
             except LookupError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
             except Exception as error:

@@ -29,6 +29,13 @@ class StubStudyModel:
         assert context
         return [f"Problem {index + 1} from {context[0].section}" for index in range(count)]
 
+    def transcribe_worksheet_page(self, data, media_type):
+        assert media_type == "image/png"
+        return "1. Differentiate x squared. 2. Find the limit."
+
+    def extract_worksheet_questions(self, page_text):
+        return [line.strip() for line in page_text.split(". ") if line.strip()]
+
     def generate_course_quiz(self, context, count, difficulty):
         assert context
         assert difficulty == "standard"
@@ -237,6 +244,47 @@ def test_generated_quiz_uses_the_selected_pdf() -> None:
 
     assert first.source_id != second.source_id
     assert [source.title for source in sources] == ["Second.pdf"]
+
+
+def test_worksheet_extracts_existing_questions_and_generates_from_only_that_source() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    first = index.import_pdf("calculus-1", "First.pdf", _single_page_pdf("1. Differentiate x squared."))
+    second = index.import_pdf("calculus-1", "Second.pdf", _single_page_pdf("2. Find the limit."))
+    service = CourseStudyService(index, StubStudyModel())
+
+    extracted = service.extract_problems("calculus-1", second.source_id)
+    generated = service.generate_problems("calculus-1", count=2, source_id=second.source_id)
+
+    assert first.source_id != second.source_id
+    assert extracted[0].sources[0].title == "Second.pdf"
+    assert all(item.sources[0].title == "Second.pdf" for item in generated)
+
+
+def test_worksheet_photo_is_transcribed_and_restored(tmp_path) -> None:
+    image = b"\x89PNG\r\n\x1a\nexample"
+    index = CourseSourceIndex(KeywordEmbeddings(), storage_dir=tmp_path)
+    service = CourseStudyService(index, StubStudyModel())
+    source = service.import_worksheet("calculus-1", "worksheet.png", image, "image/png")
+
+    restored = CourseSourceIndex(KeywordEmbeddings(), storage_dir=tmp_path)
+    restored_service = CourseStudyService(restored, StubStudyModel())
+    extracted = restored_service.extract_problems("calculus-1", source.source_id)
+
+    assert restored.get_document("calculus-1", source.source_id) == image
+    assert source.page_count == 1
+    assert extracted[0].sources[0].section == "Page 1"
+
+
+def test_scanned_pdf_uses_vision_and_keeps_page_citation() -> None:
+    index = CourseSourceIndex(KeywordEmbeddings())
+    service = CourseStudyService(index, StubStudyModel())
+
+    source = service.import_worksheet("calculus-1", "scan.pdf", _single_page_pdf(""), "application/pdf")
+    questions = service.extract_problems("calculus-1", source.source_id)
+
+    assert source.page_count == 1
+    assert questions
+    assert questions[0].sources[0].section == "Page 1"
 
 
 def test_generated_quiz_rejects_an_invalid_answer_key() -> None:

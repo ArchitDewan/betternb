@@ -61,7 +61,11 @@ struct TextbookWorkspaceView: View {
     @Environment(\.workspaceZoom) private var zoom
 
     private var selectedSource: CourseSourceRecord? {
-        sources.sources.first { $0.id == selectedSourceID }
+        pdfSources.first { $0.id == selectedSourceID }
+    }
+
+    private var pdfSources: [CourseSourceRecord] {
+        sources.sources.filter { $0.mediaType == "application/pdf" }
     }
 
     var body: some View {
@@ -76,10 +80,12 @@ struct TextbookWorkspaceView: View {
         .background(Color.clear)
         .task {
             await sources.refresh()
-            if selectedSourceID == nil, let first = sources.sources.first { await open(first.id) }
+            if selectedSource == nil, let first = pdfSources.first { await open(first.id) }
         }
         .onChange(of: sources.sources) { _, updated in
-            if selectedSourceID == nil, let first = updated.first { Task { await open(first.id) } }
+            if selectedSource == nil, let first = updated.first(where: { $0.mediaType == "application/pdf" }) {
+                Task { await open(first.id) }
+            }
         }
     }
 
@@ -107,14 +113,14 @@ struct TextbookWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "doc.text").foregroundStyle(LemmaColors.textSecondary)
-                if sources.sources.isEmpty {
+                if pdfSources.isEmpty {
                     Text("No course PDF yet").foregroundStyle(LemmaColors.textSecondary)
                 } else {
                     Picker("Source", selection: Binding(
-                        get: { selectedSourceID ?? sources.sources[0].id },
+                        get: { selectedSourceID ?? pdfSources[0].id },
                         set: { id in Task { await open(id) } }
                     )) {
-                        ForEach(sources.sources) { source in
+                        ForEach(pdfSources) { source in
                             Text(source.filename).tag(source.id)
                         }
                     }

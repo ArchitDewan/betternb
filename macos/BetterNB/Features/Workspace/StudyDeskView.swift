@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct StudyDeskView: View {
+    let courseTitle: String
     let sourceCount: Int
     let problemCount: Int
     let recentThreads: [StudyThreadSummary]
@@ -62,7 +63,7 @@ struct StudyDeskView: View {
                     .font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(LemmaColors.accent)
-                Text("Calculus I")
+                Text(courseTitle)
                     .font(.system(size: 34 * zoom, weight: .semibold))
                     .foregroundStyle(LemmaColors.textPrimary)
                 Text(recentThreads.isEmpty
@@ -90,7 +91,7 @@ struct StudyDeskView: View {
 
     private var continuation: some View {
         ViewThatFits(in: .horizontal) {
-            continuationContent(showMotif: true)
+            continuationContent(showMotif: courseTitle == "Calculus I")
             continuationContent(showMotif: false)
         }
         .padding(24 * zoom)
@@ -248,7 +249,7 @@ struct StudyDeskView: View {
             PromptComposer(
                 draft: $draft,
                 attachment: $attachment,
-                placeholder: "Ask anything about Calculus I…",
+                placeholder: "Ask anything about \(courseTitle)…",
                 allowedContentTypes: [.png, .jpeg],
                 attachmentDescription: "a PNG or JPEG homework image",
                 focusRequest: composerFocusRequest,
@@ -313,75 +314,270 @@ struct StudyDeskView: View {
 }
 
 struct WorkspaceHomeView: View {
-    let onOpenCalculus: () -> Void
+    let notebooks: [CourseNotebook]
+    let activeNotebookID: String
+    let onOpenNotebook: (String) -> Void
+    let onCreateNotebook: () -> Void
+    let onRequestRenameNotebook: (CourseNotebook) -> Void
+    let onRequestDeleteNotebook: (CourseNotebook) -> Void
     @Environment(\.workspaceZoom) private var zoom
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 27 * zoom) {
-                VStack(alignment: .leading, spacing: 8 * zoom) {
-                    Text("Your workspace")
-                        .font(LemmaTypography.caption(zoom))
+            VStack(alignment: .leading, spacing: 28 * zoom) {
+                HStack(alignment: .bottom, spacing: 18 * zoom) {
+                    VStack(alignment: .leading, spacing: 8 * zoom) {
+                        Text("YOUR WORKSPACE")
+                            .font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
+                            .tracking(1.2)
+                            .foregroundStyle(LemmaColors.accent)
+                        Text("Your notebooks")
+                            .font(LemmaTypography.pageTitle(zoom))
+                            .foregroundStyle(LemmaColors.textPrimary)
+                        Text("Keep each course and its work together.")
+                            .font(LemmaTypography.body(zoom))
+                            .foregroundStyle(LemmaColors.textSecondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button(action: onCreateNotebook) {
+                        Label("New notebook", systemImage: "plus")
+                            .font(.system(size: 12 * zoom, weight: .semibold))
+                            .foregroundStyle(AppTheme.inverseText)
+                            .padding(.horizontal, 16 * zoom)
+                            .frame(height: 36 * zoom)
+                            .background(LemmaColors.accent, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+
+                VStack(alignment: .leading, spacing: 14 * zoom) {
+                    Text("COURSES  ·  \(notebooks.count)")
+                        .font(.system(size: 11 * zoom, weight: .semibold, design: .rounded))
+                        .tracking(1.1)
                         .foregroundStyle(LemmaColors.textTertiary)
-                    Text("A place for the ideas that stay with you.")
-                        .font(LemmaTypography.pageTitle(zoom))
-                        .foregroundStyle(LemmaColors.textPrimary)
-                    Text("Choose a course to continue learning.")
-                        .font(LemmaTypography.body(zoom))
-                        .foregroundStyle(LemmaColors.textSecondary)
-                }
-
-                LemmaSectionHeader(title: "Your courses")
-
-                Button(action: onOpenCalculus) {
-                    HStack(spacing: 20 * zoom) {
-                        VStack(alignment: .leading, spacing: 11 * zoom) {
-                            Text("Active course")
-                                .font(LemmaTypography.caption(zoom))
-                                .foregroundStyle(LemmaColors.textTertiary)
-                            Text("Calculus I")
-                                .font(LemmaTypography.conceptTitle(zoom))
-                                .foregroundStyle(LemmaColors.textPrimary)
-                            Text("Problems, sources, and study threads in one place.")
-                                .font(LemmaTypography.body(zoom))
-                                .foregroundStyle(LemmaColors.textSecondary)
-                            Label("Open course", systemImage: "arrow.right")
-                                .font(.system(size: 12 * zoom, weight: .semibold))
-                                .foregroundStyle(LemmaColors.accent)
-                                .padding(.top, 5 * zoom)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270 * zoom), spacing: 14 * zoom)],
+                              spacing: 14 * zoom) {
+                        ForEach(notebooks) { notebook in
+                            notebookCard(notebook)
                         }
-                        Spacer(minLength: 0)
-                        LemmaKnowledgeMotif()
-                    }
-                    .padding(LemmaSpacing.card * zoom)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(LemmaColors.surface,
-                                in: RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: LemmaRadius.card * zoom)
-                            .stroke(LemmaColors.border, lineWidth: 1)
+                        Button(action: onCreateNotebook) {
+                            VStack(alignment: .leading, spacing: 16 * zoom) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16 * zoom, weight: .medium))
+                                    .foregroundStyle(LemmaColors.accent)
+                                    .frame(width: 38 * zoom, height: 38 * zoom)
+                                    .background(LemmaColors.selectionWash,
+                                                in: RoundedRectangle(cornerRadius: 10 * zoom))
+                                Spacer(minLength: 0)
+                                Text("Another course?")
+                                    .font(.system(size: 17 * zoom, weight: .medium))
+                                    .foregroundStyle(LemmaColors.textPrimary)
+                                Text("Create a notebook with any course name.")
+                                    .font(.system(size: 12 * zoom))
+                                    .foregroundStyle(LemmaColors.textSecondary)
+                            }
+                            .padding(20 * zoom)
+                            .frame(maxWidth: .infinity, minHeight: 175 * zoom, alignment: .topLeading)
+                            .background(LemmaColors.surfaceElevated.opacity(0.35),
+                                        in: RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: LemmaRadius.card * zoom)
+                                    .strokeBorder(LemmaColors.border, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Create another notebook")
                     }
                 }
-                .buttonStyle(.plain)
-
-                Text("Linear Algebra · Coming next")
-                    .font(.system(size: 12 * zoom))
-                    .foregroundStyle(LemmaColors.textTertiary)
-                    .padding(.leading, 4 * zoom)
             }
             .frame(maxWidth: 1080 * zoom, alignment: .leading)
             .padding(.horizontal, LemmaSpacing.page * zoom)
-            .padding(.top, 22 * zoom)
+            .padding(.top, 38 * zoom)
             .padding(.bottom, 60 * zoom)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .scrollIndicators(.hidden)
         .background(Color.clear)
     }
+
+    private func notebookCard(_ notebook: CourseNotebook) -> some View {
+        Button { onOpenNotebook(notebook.id) } label: {
+            VStack(alignment: .leading, spacing: 18 * zoom) {
+                HStack {
+                    Image(systemName: "book.closed")
+                        .font(.system(size: 17 * zoom))
+                        .foregroundStyle(LemmaColors.accent)
+                        .frame(width: 38 * zoom, height: 38 * zoom)
+                        .background(LemmaColors.selectionWash,
+                                    in: RoundedRectangle(cornerRadius: 10 * zoom))
+                    Spacer()
+                    if notebook.id == activeNotebookID {
+                        Text("Current")
+                            .font(.system(size: 11 * zoom))
+                            .foregroundStyle(LemmaColors.textTertiary)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6 * zoom) {
+                    Text(notebook.title)
+                        .font(LemmaTypography.conceptTitle(zoom))
+                        .foregroundStyle(LemmaColors.textPrimary)
+                        .lineLimit(2)
+                    Text("Study, sources, and problems")
+                        .font(.system(size: 12 * zoom))
+                        .foregroundStyle(LemmaColors.textSecondary)
+                }
+                HStack {
+                    Text("Open notebook")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                }
+                .font(.system(size: 12 * zoom, weight: .medium))
+                .foregroundStyle(LemmaColors.accent)
+            }
+            .padding(20 * zoom)
+            .frame(maxWidth: .infinity, minHeight: 175 * zoom, alignment: .topLeading)
+            .background(LemmaColors.surface,
+                        in: RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
+            .overlay {
+                RoundedRectangle(cornerRadius: LemmaRadius.card * zoom)
+                    .stroke(LemmaColors.border, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: LemmaRadius.card * zoom))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(notebook.title) notebook")
+        .contextMenu {
+            Button("Rename") { onRequestRenameNotebook(notebook) }
+            Button("Delete notebook", role: .destructive) { onRequestDeleteNotebook(notebook) }
+                .disabled(notebooks.count == 1)
+        }
+    }
+}
+
+struct CreateNotebookSheet: View {
+    let catalog: CourseNotebookCatalog
+    let onCreated: (CourseNotebook) -> Void
+    @Environment(\.workspaceZoom) private var zoom
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
+    @State private var name = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18 * zoom) {
+            HStack {
+                Image(systemName: "book.closed")
+                    .font(.system(size: 16 * zoom))
+                    .foregroundStyle(LemmaColors.accent)
+                    .frame(width: 36 * zoom, height: 36 * zoom)
+                    .background(LemmaColors.selectionWash,
+                                in: RoundedRectangle(cornerRadius: 9 * zoom))
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(LemmaColors.textSecondary)
+            }
+            VStack(alignment: .leading, spacing: 6 * zoom) {
+                Text("New notebook")
+                    .font(.system(size: 21 * zoom, weight: .semibold))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                Text("Name the course you want to study.")
+                    .font(LemmaTypography.body(zoom))
+                    .foregroundStyle(LemmaColors.textSecondary)
+            }
+            TextField("Course name, e.g. Linear Algebra", text: $name)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14 * zoom))
+                .padding(12 * zoom)
+                .background(LemmaColors.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 9 * zoom))
+                .focused($nameFocused)
+                .onSubmit(create)
+            HStack {
+                if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !catalog.canCreate(name) {
+                    Text("Use a different name (up to 80 characters).")
+                        .font(.system(size: 11 * zoom))
+                        .foregroundStyle(AppTheme.critical)
+                }
+                Spacer()
+                Button("Create notebook", action: create)
+                    .disabled(!catalog.canCreate(name))
+            }
+        }
+        .padding(24 * zoom)
+        .frame(width: 440 * zoom)
+        .background(AppTheme.panel)
+        .onAppear { nameFocused = true }
+    }
+
+    private func create() {
+        guard let notebook = catalog.create(name) else { return }
+        dismiss()
+        onCreated(notebook)
+    }
+}
+
+struct RenameNotebookSheet: View {
+    let catalog: CourseNotebookCatalog
+    let notebook: CourseNotebook
+    @Environment(\.workspaceZoom) private var zoom
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
+    @State private var name: String
+
+    init(catalog: CourseNotebookCatalog, notebook: CourseNotebook) {
+        self.catalog = catalog
+        self.notebook = notebook
+        _name = State(initialValue: notebook.title)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18 * zoom) {
+            HStack {
+                Text("Rename notebook")
+                    .font(.system(size: 21 * zoom, weight: .semibold))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(LemmaColors.textSecondary)
+            }
+            TextField("Course name", text: $name)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14 * zoom))
+                .padding(12 * zoom)
+                .background(LemmaColors.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 9 * zoom))
+                .focused($nameFocused)
+                .onSubmit(save)
+            HStack {
+                if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !catalog.canRename(notebook.id, to: name) {
+                    Text("Use a different name (up to 80 characters).")
+                        .font(.system(size: 11 * zoom))
+                        .foregroundStyle(AppTheme.critical)
+                }
+                Spacer()
+                Button("Save name", action: save)
+                    .disabled(!catalog.canRename(notebook.id, to: name))
+            }
+        }
+        .padding(24 * zoom)
+        .frame(width: 440 * zoom)
+        .background(AppTheme.panel)
+        .onAppear { nameFocused = true }
+    }
+
+    private func save() {
+        guard catalog.rename(notebook.id, to: name) else { return }
+        dismiss()
+    }
 }
 
 struct CourseSourcesView: View {
     let store: CourseSourceStore
+    let courseTitle: String
     let onGeneratedProblems: ([GeneratedCourseProblem]) -> Void
 
     @Environment(\.workspaceZoom) private var zoom
@@ -404,7 +600,7 @@ struct CourseSourcesView: View {
                     Text("Course sources")
                         .zFont(20, weight: .semibold, zoom: zoom)
                         .foregroundStyle(AppTheme.primaryText)
-                    Text("Master resources for Calculus I")
+                    Text("Sources for \(courseTitle)")
                         .zFont(13, zoom: zoom)
                         .foregroundStyle(AppTheme.secondaryText)
                 }
@@ -572,7 +768,7 @@ struct CourseSourcesView: View {
             Text("Add your first course PDF")
                 .zFont(15, weight: .semibold, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
-            Text("Lemma extracts text, builds a semantic index, and keeps answers tied to the pages it used. Scanned PDFs need OCR and are not supported yet.")
+            Text("Add a PDF with selectable text for cited Study answers. For scanned worksheets or photos, upload them in Problems.")
                 .zFont(13, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -595,7 +791,7 @@ struct CourseSourcesView: View {
                     .zFont(13, weight: .medium, zoom: zoom)
                     .foregroundStyle(AppTheme.primaryText)
                     .lineLimit(1)
-                Text("\(source.pageCount) pages · \(source.chunkCount) indexed sections")
+                Text("\(source.pageCount) \(source.pageCount == 1 ? "page" : "pages") · \(source.chunkCount) indexed sections")
                     .zFont(11, zoom: zoom)
                     .foregroundStyle(AppTheme.tertiaryText)
             }

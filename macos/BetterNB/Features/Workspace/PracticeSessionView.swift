@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct PracticeSessionView: View {
     let tutor: TutorSessionStore
     var onBackToStudy: () -> Void = {}
+    var onSaveToProblems: (() -> Void)? = nil
     @Environment(\.workspaceZoom) private var zoom
     @State private var composerBlurRequest = UUID()
 
@@ -218,6 +219,13 @@ struct PracticeSessionView: View {
             .frame(maxWidth: 120 * zoom)
 
             Spacer(minLength: 8 * zoom)
+
+            if let onSaveToProblems {
+                Button("Save to Problems", action: onSaveToProblems)
+                    .buttonStyle(.plain)
+                    .zFont(12, weight: .medium, zoom: zoom)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
 
             Button {
                 onBackToStudy()

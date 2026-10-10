@@ -61,6 +61,9 @@ class StubCourseSources:
             return b"%PDF-1.4 sample"
         return None
 
+    def source(self, course_id, source_id):
+        return CourseSource("source-1", "Lecture.pdf", 2, 3) if source_id == "source-1" else None
+
 
 class StubCourseStudy:
     sources = StubCourseSources()
@@ -72,7 +75,8 @@ class StubCourseStudy:
             [SourceReference(source_id="chunk-1", title="Lecture.pdf", section="Page 2")],
         )
 
-    def generate_problems(self, course_id, count):
+    def generate_problems(self, course_id, count, source_id=None):
+        self.last_problem_source_id = source_id
         return [
             GeneratedCourseProblem(
                 prompt=f"Generated problem {index + 1}",
@@ -80,6 +84,16 @@ class StubCourseStudy:
             )
             for index in range(count)
         ]
+
+    def extract_problems(self, course_id, source_id):
+        assert source_id == "source-1"
+        return [GeneratedCourseProblem("Differentiate x squared", [
+            SourceReference(source_id="source-1.p1", title="Lecture.pdf", section="Page 1")
+        ])]
+
+    def import_worksheet(self, course_id, filename, data, media_type):
+        assert media_type == "image/png"
+        return CourseSource("source-2", filename, 1, 1, media_type)
 
     def generate_quiz(self, course_id, count, difficulty, source_id=None):
         return (
@@ -119,6 +133,21 @@ def test_summary_endpoint_requires_source_and_returns_citations() -> None:
 def course_client() -> TestClient:
     orchestrator = TutorOrchestrator(StubModel(), StubKnowledgeRepository(), StubVerifier())
     return TestClient(create_app(orchestrator, course_study=StubCourseStudy()))
+
+
+def test_worksheet_upload_extract_and_source_specific_generation() -> None:
+    app = course_client()
+    uploaded = app.post("/v1/courses/calculus-1/worksheets", files={
+        "document": ("Worksheet.png", b"\x89PNG\r\n\x1a\nexample", "image/png")
+    })
+    extracted = app.post("/v1/courses/calculus-1/sources/source-1/problems/extract")
+    generated = app.post("/v1/courses/calculus-1/problems", json={"count": 2, "source_id": "source-1"})
+
+    assert uploaded.status_code == 200
+    assert uploaded.json()["media_type"] == "image/png"
+    assert extracted.json()["problems"][0]["sources"][0]["section"] == "Page 1"
+    assert generated.status_code == 200
+    assert len(generated.json()["problems"]) == 2
 
 
 def test_course_answer_accepts_an_image_with_the_question() -> None:

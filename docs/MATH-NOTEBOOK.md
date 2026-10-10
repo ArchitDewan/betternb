@@ -53,17 +53,17 @@ Course sources             Problems                 Study                    Rev
 
 Student opens Sources from the Study desk and adds a lecture PDF. Lemma extracts text with page provenance, builds a semantic index, and can generate cited questions or Problems from that context. Sources are course context, not another destination the student must understand before beginning.
 
-The current F009B slice supports text-based PDFs. OCR, source-page viewing, selection regions, deletion, and student-authored notes remain later milestones.
+Course sources can index text PDFs. Problems also accepts scanned worksheets and photos for question import and generation. Source-page viewing, selection regions, deletion, and student-authored notes remain later milestones.
 
 ### Problems
 
-The homework set. Each card is a prompt, source (page 4, #35), status (not started / in progress / checked / revealed), and a link to the latest attempt. **Work in Practice** opens the notebook for that item.
+The homework set. Upload a PDF or one or more worksheet photos, then choose **Import questions** to keep its questions or **Generate new problems** for fresh questions using similar methods. Review, edit, and select the drafts before saving. Students can also add a problem manually. Each card shows its prompt, source page, attempt status, and a link to Practice. Work and manual Done status survive relaunch on this Mac.
 
 Problems is not a second chatbot.
 
 ### Study
 
-The one obvious starting surface. The desk automatically routes a course question into grounded conversation and a problem into the working **worksheet**; it does not ask the student to classify their input. Returning to the desk preserves the in-memory attempt.
+The one obvious starting surface. The desk automatically routes a course question into grounded conversation and a problem into the working **worksheet**; it does not ask the student to classify their input. Returning to the desk preserves the attempt.
 
 - Breadcrumb: `Calculus I › Integration techniques › Problem 06 of 14`.
 - Problem block at the top: rendered math, source line (`Lecture 14 · page 4 · #35`), quiet check marks when the prompt is confirmed.
@@ -123,7 +123,7 @@ As of `feat/F009-guided-math-tutor` (notebook pass):
 | Course PDF ingestion + semantic retrieval | `course_study.py`, `CourseStudy.swift` | Text PDFs only; in-memory until service restart |
 | Grounded Study answers + problem generation | `/v1/courses/{course_id}` | Page citations; no source viewer yet |
 
-The first F009B vertical slice is done. Durable resources, pgvector, OCR, streaming, remote auth, deletion, and source-page navigation remain phase 2–3 work.
+The first F009B vertical slice is done. F022 adds worksheet OCR, reviewed question import and generation, durable local Problems and Practice attempts, and a persisted tutor source index. Account sync, pgvector, streaming, deletion, and source-page navigation remain later work.
 
 ## Rules that must not regress
 
