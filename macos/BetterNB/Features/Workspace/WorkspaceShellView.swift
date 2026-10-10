@@ -1,25 +1,41 @@
 import SwiftUI
 
 struct WorkspaceShellView: View {
-    @State private var selection: WorkspaceDestination = .study
+    @State private var selection: WorkspaceDestination = .home
     @State private var studyRoute: StudyRoute = .desk
-    @State private var threads = StudyThreadStore()
-    @State private var courseSources = CourseSourceStore(
-        courseID: "calculus-1",
-        client: AppDependencies.makeCourseStudyClient()
-    )
-    @State private var textbookScratchpad = TextbookScratchpadStore()
-    @State private var problemSet = ProblemSetStore()
+    @State private var catalog: CourseNotebookCatalog
+    @State private var workspace: CourseWorkspaceState
+    @State private var workspaceCache: [String: CourseWorkspaceState] = [:]
     @State private var isSearchPresented = false
     @State private var isSourcesPresented = false
     @State private var isAllThreadsPresented = false
+    @State private var notebookToRename: CourseNotebook?
+    @State private var notebookToDelete: CourseNotebook?
     @Environment(\.workspaceZoom) private var zoom
+
+    init(accountID: String) {
+        let catalog = CourseNotebookCatalog(accountID: accountID)
+        _catalog = State(initialValue: catalog)
+        _workspace = State(initialValue: CourseWorkspaceState(courseID: catalog.activeNotebook.id))
+    }
+
+    private var threads: StudyThreadStore { workspace.threads }
+    private var courseSources: CourseSourceStore { workspace.courseSources }
+    private var textbookScratchpad: TextbookScratchpadStore { workspace.textbookScratchpad }
+    private var problemSet: ProblemSetStore { workspace.problemSet }
+    private var courseTitle: String { catalog.activeNotebook.title }
 
     var body: some View {
         GeometryReader { geometry in
             NavigationSplitView {
                 SidebarView(
                     selection: $selection,
+                    notebooks: catalog.notebooks,
+                    activeNotebookID: catalog.activeID,
+                    onOpenNotebook: openNotebook,
+                    onCreateNotebook: { selection = .home; isCreateNotebookPresented = true },
+                    onRequestRenameNotebook: { notebookToRename = $0 },
+                    onRequestDeleteNotebook: { notebookToDelete = $0 },
                     recentThreads: threads.recent,
                     totalThreadCount: threads.all.count,
                     activeThreadID: studyRoute == .desk ? nil : threads.activeID,
@@ -29,7 +45,7 @@ struct WorkspaceShellView: View {
                 )
             } detail: {
                 VStack(spacing: 0) {
-                    WorkspaceTopBar(destination: selection) {
+                    WorkspaceTopBar(destination: selection, courseTitle: courseTitle) {
                         isSearchPresented = true
                     }
                     destinationView
@@ -54,7 +70,7 @@ struct WorkspaceShellView: View {
             }
         }
         .sheet(isPresented: $isSourcesPresented) {
-            CourseSourcesView(store: courseSources) { selected in
+            CourseSourcesView(store: courseSources, courseTitle: courseTitle) { selected in
                 problemSet.addGenerated(selected)
             }
         }
@@ -64,15 +80,40 @@ struct WorkspaceShellView: View {
                 isAllThreadsPresented = false
             }
         }
+        .sheet(isPresented: $isCreateNotebookPresented) {
+            CreateNotebookSheet(catalog: catalog) { notebook in
+                openNotebook(notebook.id)
+            }
+        }
+        .sheet(item: $notebookToRename) { notebook in
+            RenameNotebookSheet(catalog: catalog, notebook: notebook)
+        }
+        .alert("Delete notebook?", isPresented: Binding(
+            get: { notebookToDelete != nil },
+            set: { if !$0 { notebookToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { notebookToDelete = nil }
+            Button("Delete notebook", role: .destructive) {
+                if let notebookToDelete { deleteNotebook(notebookToDelete.id) }
+                notebookToDelete = nil
+            }
+        } message: {
+            Text("Remove \(notebookToDelete?.title ?? "this notebook") from your workspace? This cannot be undone.")
+        }
     }
+
+    @State private var isCreateNotebookPresented = false
 
     @ViewBuilder
     private var destinationView: some View {
         switch selection {
         case .home:
-            WorkspaceHomeView {
-                showStudyDesk()
-            }
+            WorkspaceHomeView(notebooks: catalog.notebooks,
+                              activeNotebookID: catalog.activeID,
+                              onOpenNotebook: openNotebook,
+                              onCreateNotebook: { isCreateNotebookPresented = true },
+                              onRequestRenameNotebook: { notebookToRename = $0 },
+                              onRequestDeleteNotebook: { notebookToDelete = $0 })
         case .study:
             studyView
         case .textbook:
@@ -97,6 +138,7 @@ struct WorkspaceShellView: View {
         switch studyRoute {
         case .desk:
             StudyDeskView(
+                courseTitle: courseTitle,
                 sourceCount: courseSources.sources.count,
                 problemCount: problemSet.items.count,
                 recentThreads: threads.recent,
@@ -115,10 +157,11 @@ struct WorkspaceShellView: View {
                 ChannelConversationView(
                     destination: .study,
                     conversations: conversations,
-                    topicTitle: threads.activeTitle ?? "A calculus idea",
+                    courseTitle: courseTitle,
+                    topicTitle: threads.activeTitle ?? "Course question",
                     onBackToStudy: showStudyDesk,
                     onAskCourse: { question in
-                        await sendCourseQuestion(question, in: conversations)
+                        await sendCourseQuestion(question, in: conversations, sources: courseSources)
                     }
                 )
                 .id(threads.activeID)
@@ -135,21 +178,23 @@ struct WorkspaceShellView: View {
 
     private func askCourse(_ question: String) {
         let conversations = WorkspaceConversationStore(repository: InMemoryChannelMessageRepository())
+        let sources = courseSources
         threads.startCourse(question: question, conversations: conversations)
         studyRoute = .conversation
         selection = .study
         Task {
-            _ = await sendCourseQuestion(question, in: conversations)
+            _ = await sendCourseQuestion(question, in: conversations, sources: sources)
         }
     }
 
-    private func sendCourseQuestion(_ question: String, in conversations: WorkspaceConversationStore) async -> Bool {
+    private func sendCourseQuestion(_ question: String, in conversations: WorkspaceConversationStore,
+                                    sources: CourseSourceStore) async -> Bool {
         guard await conversations.send(question, in: .study) else { return false }
-        if let answer = await courseSources.answer(question) {
+        if let answer = await sources.answer(question) {
             conversations.appendTutorReply(answer.answer, sources: answer.sources, in: .study)
         } else {
             conversations.appendTutorReply(
-                courseSources.errorMessage ?? "Add a course PDF so I can answer from your material.",
+                sources.errorMessage ?? "Add a course PDF so I can answer from your material.",
                 in: .study
             )
         }
@@ -180,6 +225,48 @@ struct WorkspaceShellView: View {
         threads.showDesk()
         studyRoute = .desk
         selection = .study
+    }
+
+    private func openNotebook(_ id: String) {
+        guard catalog.notebooks.contains(where: { $0.id == id }) else { return }
+        if id != workspace.courseID {
+            workspaceCache[workspace.courseID] = workspace
+            workspace = workspaceCache.removeValue(forKey: id) ?? CourseWorkspaceState(courseID: id)
+        }
+        _ = catalog.select(id)
+        isSourcesPresented = false
+        isAllThreadsPresented = false
+        studyRoute = .desk
+        selection = .study
+    }
+
+    private func deleteNotebook(_ id: String) {
+        let wasOpen = workspace.courseID == id
+        guard catalog.delete(id) else { return }
+        workspaceCache[id] = nil
+        if wasOpen {
+            workspace = workspaceCache.removeValue(forKey: catalog.activeID)
+                ?? CourseWorkspaceState(courseID: catalog.activeID)
+            studyRoute = .desk
+            selection = .study
+            isSourcesPresented = false
+            isAllThreadsPresented = false
+        }
+    }
+}
+
+@MainActor
+private final class CourseWorkspaceState {
+    let courseID: String
+    let threads = StudyThreadStore()
+    let courseSources: CourseSourceStore
+    let textbookScratchpad = TextbookScratchpadStore()
+    let problemSet = ProblemSetStore()
+
+    init(courseID: String) {
+        self.courseID = courseID
+        courseSources = CourseSourceStore(courseID: courseID,
+                                         client: AppDependencies.makeCourseStudyClient())
     }
 }
 

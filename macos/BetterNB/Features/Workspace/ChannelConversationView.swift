@@ -3,6 +3,7 @@ import SwiftUI
 struct ChannelConversationView: View {
     let destination: WorkspaceDestination
     let conversations: WorkspaceConversationStore
+    var courseTitle = "Course"
     var topicTitle = "Study conversation"
     var onBackToStudy: (() -> Void)? = nil
     var onAskCourse: ((String) async -> Bool)? = nil
@@ -118,7 +119,7 @@ struct ChannelConversationView: View {
             Text("Start a conversation about \(destination.title.lowercased()).")
                 .zFont(15, weight: .medium, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
-            Text("Questions and files stay connected to this part of Calculus I.")
+            Text("Questions and files stay connected to \(courseTitle).")
                 .zFont(13, zoom: zoom)
                 .foregroundStyle(AppTheme.tertiaryText)
         }
