@@ -572,7 +572,7 @@ struct CourseSourcesView: View {
             Text("Add your first course PDF")
                 .zFont(15, weight: .semibold, zoom: zoom)
                 .foregroundStyle(AppTheme.primaryText)
-            Text("Lemma extracts text, builds a semantic index, and keeps answers tied to the pages it used. Scanned PDFs need OCR and are not supported yet.")
+            Text("Add a PDF with selectable text for cited Study answers. For scanned worksheets or photos, upload them in Problems.")
                 .zFont(13, zoom: zoom)
                 .foregroundStyle(AppTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -595,7 +595,7 @@ struct CourseSourcesView: View {
                     .zFont(13, weight: .medium, zoom: zoom)
                     .foregroundStyle(AppTheme.primaryText)
                     .lineLimit(1)
-                Text("\(source.pageCount) pages · \(source.chunkCount) indexed sections")
+                Text("\(source.pageCount) \(source.pageCount == 1 ? "page" : "pages") · \(source.chunkCount) indexed sections")
                     .zFont(11, zoom: zoom)
                     .foregroundStyle(AppTheme.tertiaryText)
             }

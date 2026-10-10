@@ -31,7 +31,9 @@ def build_app():
         knowledge=knowledge,
         verifier=DerivativeVerifier(),
     )
-    course_study = CourseStudyService(CourseSourceIndex(embeddings), model)
+    default_data_dir = Path.home() / "Library/Application Support/Lemma/tutor-course-sources"
+    course_data_dir = Path(os.getenv("BETTERNB_TUTOR_DATA_DIR", str(default_data_dir)))
+    course_study = CourseStudyService(CourseSourceIndex(embeddings, storage_dir=course_data_dir), model)
     return create_app(orchestrator, course_study=course_study)
 
 

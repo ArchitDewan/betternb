@@ -1,8 +1,10 @@
+import AppKit
 import Foundation
+import PDFKit
 import Observation
 import UniformTypeIdentifiers
 
-struct MessageAttachment: Identifiable, Equatable, Sendable {
+struct MessageAttachment: Identifiable, Equatable, Sendable, Codable {
     static let maximumBytes = 10 * 1_024 * 1_024
     static let supportedMediaTypes = ["image/png", "image/jpeg", "application/pdf"]
 
@@ -19,10 +21,16 @@ struct MessageAttachment: Identifiable, Equatable, Sendable {
         mediaType: String,
         data: Data
     ) throws {
+        try self.init(id: id, filename: filename, mediaType: mediaType, data: data,
+                      limit: Self.maximumBytes)
+    }
+
+    private init(id: UUID = UUID(), filename: String, mediaType: String,
+                 data: Data, limit: Int) throws {
         guard Self.supportedMediaTypes.contains(mediaType) else {
             throw ChannelMessageError.unsupportedAttachment
         }
-        guard data.count <= Self.maximumBytes else {
+        guard data.count <= limit else {
             throw ChannelMessageError.attachmentTooLarge
         }
 
@@ -55,6 +63,61 @@ struct MessageAttachment: Identifiable, Equatable, Sendable {
             mediaType: mediaType,
             data: Data(contentsOf: url, options: .mappedIfSafe)
         )
+    }
+
+    static func importingWorksheet(_ url: URL) throws -> MessageAttachment {
+        let hasSecurityScope = url.startAccessingSecurityScopedResource()
+        defer { if hasSecurityScope { url.stopAccessingSecurityScopedResource() } }
+        let extensionName = url.pathExtension.lowercased()
+        if extensionName == "heic" || extensionName == "heif" {
+            guard let image = NSImage(contentsOf: url),
+                  let tiff = image.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiff),
+                  let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
+                throw ChannelMessageError.unsupportedAttachment
+            }
+            return try MessageAttachment(filename: url.deletingPathExtension().lastPathComponent + ".jpg",
+                                         mediaType: "image/jpeg", data: jpeg)
+        }
+        let values = try url.resourceValues(forKeys: [.contentTypeKey, .fileSizeKey])
+        let limit = 25 * 1_024 * 1_024
+        if let fileSize = values.fileSize, fileSize > limit {
+            throw ChannelMessageError.attachmentTooLarge
+        }
+        guard let contentType = values.contentType,
+              let mediaType = supportedMediaType(for: contentType) else {
+            throw ChannelMessageError.unsupportedAttachment
+        }
+        return try MessageAttachment(filename: url.lastPathComponent, mediaType: mediaType,
+                                     data: Data(contentsOf: url, options: .mappedIfSafe), limit: limit)
+    }
+
+    static func importingWorksheetFiles(_ urls: [URL]) throws -> MessageAttachment {
+        guard !urls.isEmpty else { throw ChannelMessageError.unsupportedAttachment }
+        if urls.count == 1 { return try importingWorksheet(urls[0]) }
+        let document = PDFDocument()
+        for url in urls {
+            let attachment = try importingWorksheet(url)
+            if attachment.mediaType == "application/pdf" {
+                guard let source = PDFDocument(data: attachment.data) else {
+                    throw ChannelMessageError.unsupportedAttachment
+                }
+                for index in 0..<source.pageCount {
+                    if let page = source.page(at: index) { document.insert(page, at: document.pageCount) }
+                }
+            } else {
+                guard let image = NSImage(data: attachment.data), let page = PDFPage(image: image) else {
+                    throw ChannelMessageError.unsupportedAttachment
+                }
+                document.insert(page, at: document.pageCount)
+            }
+        }
+        guard let data = document.dataRepresentation() else {
+            throw ChannelMessageError.unsupportedAttachment
+        }
+        return try MessageAttachment(filename: "Worksheet (\(urls.count) files).pdf",
+                                     mediaType: "application/pdf", data: data,
+                                     limit: 25 * 1_024 * 1_024)
     }
 
     private static func supportedMediaType(for contentType: UTType) -> String? {

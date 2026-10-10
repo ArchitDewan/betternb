@@ -133,6 +133,33 @@ struct CourseStudyTests {
     }
 
     @Test @MainActor
+    func savedProblemsAndFoldersSurviveStoreReload() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lemma-problems-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let first = ProblemSetStore(storageURL: url)
+        let folder = first.addGroup("Worksheet 1")!
+        let problem = first.add("Differentiate x squared", groupID: folder.id)!
+        first.markOpened(problem.id)
+
+        let restored = ProblemSetStore(storageURL: url)
+        #expect(restored.groups.map(\.title) == ["Worksheet 1"])
+        #expect(restored.items.first?.id == problem.id)
+        #expect(restored.items.first?.openedInPractice == true)
+    }
+
+    @Test @MainActor
+    func importingTheSameWorksheetQuestionTwiceDoesNotDuplicateIt() {
+        let problems = ProblemSetStore()
+        let source = TutorSource(sourceID: "worksheet.p1", title: "Worksheet.pdf", section: "Page 1")
+        let question = GeneratedCourseProblem(prompt: "Find the limit", sources: [source])
+
+        #expect(problems.addGenerated([question]) == 1)
+        #expect(problems.addGenerated([question]) == 0)
+        #expect(problems.items.count == 1)
+    }
+
+    @Test @MainActor
     func savedAssignmentQuestionsAutomaticallyShareASourceFolder() {
         let problems = ProblemSetStore()
         let assignment = TutorSource(sourceID: "a1-page-1", title: "Assignment_1_prac_questions.pdf", section: "Page 1")

@@ -3,17 +3,28 @@ import SwiftUI
 struct WorkspaceShellView: View {
     @State private var selection: WorkspaceDestination = .study
     @State private var studyRoute: StudyRoute = .desk
-    @State private var threads = StudyThreadStore()
-    @State private var courseSources = CourseSourceStore(
-        courseID: "calculus-1",
-        client: AppDependencies.makeCourseStudyClient()
-    )
+    @State private var threads: StudyThreadStore
+    @State private var courseSources: CourseSourceStore
     @State private var textbookScratchpad = TextbookScratchpadStore()
-    @State private var problemSet = ProblemSetStore()
+    @State private var problemSet: ProblemSetStore
     @State private var isSearchPresented = false
     @State private var isSourcesPresented = false
     @State private var isAllThreadsPresented = false
     @Environment(\.workspaceZoom) private var zoom
+
+    init(accountID: String) {
+        _threads = State(initialValue: StudyThreadStore(
+            storageURL: NotebookStorage.attemptsURL(for: accountID),
+            tutorClient: AppDependencies.makeTutorClient()
+        ))
+        _courseSources = State(initialValue: CourseSourceStore(
+            courseID: NotebookStorage.courseID(for: accountID),
+            client: AppDependencies.makeCourseStudyClient()
+        ))
+        _problemSet = State(initialValue: ProblemSetStore(
+            storageURL: NotebookStorage.problemsURL(for: accountID)
+        ))
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -83,10 +94,19 @@ struct WorkspaceShellView: View {
                 onPracticeSelection: { startProblem($0, attachment: nil) }
             )
         case .problems:
-            ProblemSetView(store: problemSet) { item in
-                problemSet.markOpened(item.id)
-                startProblem(item.prompt, attachment: nil)
-            }
+            ProblemSetView(store: problemSet, sources: courseSources, onWork: { item in
+                if let threadID = threads.latestPractice(for: item.id) {
+                    openThread(threadID)
+                } else {
+                    startSavedProblem(item)
+                }
+            }, onNewAttempt: { item in
+                startSavedProblem(item)
+            }, latestAttempt: { id in
+                threads.latestAttempt(for: id)
+            }, onMarkDone: { item, attemptID, done in
+                problemSet.markDone(item.id, attemptID: attemptID, done: done)
+            })
         default:
             WorkspacePlaceholderView(destination: selection)
         }
@@ -125,9 +145,12 @@ struct WorkspaceShellView: View {
             }
         case .worksheet:
             if let tutor = threads.activeTutor {
-                PracticeSessionView(tutor: tutor) {
-                    showStudyDesk()
-                }
+                PracticeSessionView(tutor: tutor, onBackToStudy: showStudyDesk,
+                                    onSaveToProblems: threads.activeProblemID == nil ? {
+                    guard let prompt = tutor.problem,
+                          let saved = problemSet.add(prompt) else { return }
+                    threads.linkActivePractice(to: saved.id)
+                } : nil)
                 .id(threads.activeID)
             }
         }
@@ -168,6 +191,15 @@ struct WorkspaceShellView: View {
                 _ = await tutor.beginProblem(prompt)
             }
         }
+    }
+
+    private func startSavedProblem(_ item: CourseProblem) {
+        let tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
+        threads.startPractice(prompt: item.prompt, tutor: tutor, problemID: item.id)
+        problemSet.markOpened(item.id)
+        studyRoute = .worksheet
+        selection = .study
+        Task { _ = await tutor.beginProblem(item.prompt) }
     }
 
     private func openThread(_ id: UUID) {

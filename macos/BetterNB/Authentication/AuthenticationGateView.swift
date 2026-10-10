@@ -7,7 +7,8 @@ struct AuthenticationGateView: View {
     var body: some View {
         Group {
             if session.state.unlocksWorkspace {
-                WorkspaceShellView()
+                WorkspaceShellView(accountID: session.state.account!.id)
+                    .id(session.state.account!.id)
                     .environmentObject(session)
             } else {
                 signInSurface

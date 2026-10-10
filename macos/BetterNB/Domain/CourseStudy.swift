@@ -6,6 +6,8 @@ struct CourseSourceRecord: Codable, Equatable, Sendable, Identifiable {
     let filename: String
     let pageCount: Int
     let chunkCount: Int
+    let mediaType: String
+    let unreadablePages: [Int]
 
     var id: String { sourceID }
 
@@ -14,6 +16,28 @@ struct CourseSourceRecord: Codable, Equatable, Sendable, Identifiable {
         case filename
         case pageCount = "page_count"
         case chunkCount = "chunk_count"
+        case mediaType = "media_type"
+        case unreadablePages = "unreadable_pages"
+    }
+
+    init(sourceID: String, filename: String, pageCount: Int, chunkCount: Int,
+         mediaType: String = "application/pdf", unreadablePages: [Int] = []) {
+        self.sourceID = sourceID
+        self.filename = filename
+        self.pageCount = pageCount
+        self.chunkCount = chunkCount
+        self.mediaType = mediaType
+        self.unreadablePages = unreadablePages
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sourceID = try values.decode(String.self, forKey: .sourceID)
+        filename = try values.decode(String.self, forKey: .filename)
+        pageCount = try values.decode(Int.self, forKey: .pageCount)
+        chunkCount = try values.decode(Int.self, forKey: .chunkCount)
+        mediaType = try values.decodeIfPresent(String.self, forKey: .mediaType) ?? "application/pdf"
+        unreadablePages = try values.decodeIfPresent([Int].self, forKey: .unreadablePages) ?? []
     }
 }
 
@@ -88,9 +112,12 @@ protocol CourseStudyClient: Sendable {
     func listSources(courseID: String) async throws -> [CourseSourceRecord]
     func readPDF(sourceID: String, courseID: String) async throws -> Data
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
+    func importWorksheet(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
+    func extractProblems(courseID: String, sourceID: String) async throws -> [GeneratedCourseProblem]
     func answerCourseQuestion(_ question: String, courseID: String,
                               attachment: MessageAttachment?) async throws -> GroundedCourseAnswer
     func generateProblems(courseID: String, count: Int) async throws -> [GeneratedCourseProblem]
+    func generateProblems(courseID: String, sourceID: String, count: Int) async throws -> [GeneratedCourseProblem]
     func generateQuiz(courseID: String, sourceID: String?, count: Int,
                       difficulty: QuizDifficulty) async throws -> GeneratedTextbookQuiz
     func generateFlashcards(courseID: String, sourceID: String?, count: Int) async throws -> [GeneratedTextbookFlashcard]
@@ -98,6 +125,17 @@ protocol CourseStudyClient: Sendable {
 }
 
 extension CourseStudyClient {
+    func importWorksheet(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {
+        throw TutorServiceError.rejected("Worksheet upload is unavailable from this client.")
+    }
+
+    func extractProblems(courseID: String, sourceID: String) async throws -> [GeneratedCourseProblem] {
+        throw TutorServiceError.rejected("Worksheet extraction is unavailable from this client.")
+    }
+
+    func generateProblems(courseID: String, sourceID: String, count: Int) async throws -> [GeneratedCourseProblem] {
+        throw TutorServiceError.rejected("Worksheet generation is unavailable from this client.")
+    }
     func answerCourseQuestion(_ question: String, courseID: String) async throws -> GroundedCourseAnswer {
         try await answerCourseQuestion(question, courseID: courseID, attachment: nil)
     }
@@ -169,6 +207,48 @@ final class CourseSourceStore {
         } catch {
             errorMessage = message(for: error, fallback: "That PDF couldn’t be indexed.")
             return false
+        }
+    }
+
+    func importWorksheet(_ attachment: MessageAttachment) async -> CourseSourceRecord? {
+        guard !isImporting else { return nil }
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            let source = try await client.importWorksheet(attachment, courseID: courseID)
+            sources.removeAll { $0.id == source.id }
+            sources.append(source)
+            sources.sort { $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending }
+            errorMessage = nil
+            return source
+        } catch {
+            errorMessage = message(for: error, fallback: "That worksheet couldn’t be read.")
+            return nil
+        }
+    }
+
+    func extractProblems(sourceID: String) async -> [GeneratedCourseProblem] {
+        do {
+            let result = try await client.extractProblems(courseID: courseID, sourceID: sourceID)
+            errorMessage = nil
+            return result
+        } catch {
+            errorMessage = message(for: error, fallback: "Questions couldn’t be extracted.")
+            return []
+        }
+    }
+
+    func generateProblems(sourceID: String, count: Int = 3) async -> [GeneratedCourseProblem] {
+        guard !isGenerating else { return [] }
+        isGenerating = true
+        defer { isGenerating = false }
+        do {
+            let result = try await client.generateProblems(courseID: courseID, sourceID: sourceID, count: count)
+            errorMessage = nil
+            return result
+        } catch {
+            errorMessage = message(for: error, fallback: "Problems couldn’t be generated from this worksheet.")
+            return []
         }
     }
 

@@ -134,7 +134,7 @@ protocol TutorClient: Sendable {
     func send(_ request: TutorTurnRequest) async throws -> TutorTurnResponse
 }
 
-enum TutorTurnKind: Equatable, Sendable {
+enum TutorTurnKind: Equatable, Sendable, Codable {
     case problem
     case message
     case step(Int)
@@ -167,8 +167,8 @@ enum TutorTurnKind: Equatable, Sendable {
     }
 }
 
-struct TutorConversationEntry: Identifiable, Equatable, Sendable {
-    enum Role: Equatable, Sendable {
+struct TutorConversationEntry: Identifiable, Equatable, Sendable, Codable {
+    enum Role: Equatable, Sendable, Codable {
         case student
         case tutor
     }
@@ -567,8 +567,8 @@ extension TutorSessionStore {
     }
 }
 
-struct PendingMathTranscription: Equatable, Sendable {
-    enum Purpose: Sendable {
+struct PendingMathTranscription: Equatable, Sendable, Codable {
+    enum Purpose: Sendable, Codable {
         case problem
         case step
     }
@@ -579,21 +579,34 @@ struct PendingMathTranscription: Equatable, Sendable {
     let filename: String
 }
 
+struct TutorSessionSnapshot: Codable {
+    let sessionID: String
+    let problem: String?
+    let attemptSteps: [String]
+    let entries: [TutorConversationEntry]
+    let composerDraft: String
+    let composerAttachment: MessageAttachment?
+    let pendingTranscription: PendingMathTranscription?
+    let nextHintLevel: Int?
+    let solutionRevealed: Bool
+}
+
 @MainActor
 @Observable
 final class TutorSessionStore {
     private let client: any TutorClient
     private let sessionID: String
     var minimumResponseDelay: Duration
-    var composerDraft = ""
-    var composerAttachment: MessageAttachment?
+    @ObservationIgnored var onStateChanged: (@MainActor () -> Void)?
+    var composerDraft = "" { didSet { onStateChanged?() } }
+    var composerAttachment: MessageAttachment? { didSet { onStateChanged?() } }
 
-    private(set) var problem: String?
-    private(set) var attemptSteps: [String] = []
-    private(set) var entries: [TutorConversationEntry] = []
-    private(set) var pendingTranscription: PendingMathTranscription?
-    private(set) var nextHintLevel: Int? = 1
-    private(set) var solutionRevealed = false
+    private(set) var problem: String? { didSet { onStateChanged?() } }
+    private(set) var attemptSteps: [String] = [] { didSet { onStateChanged?() } }
+    private(set) var entries: [TutorConversationEntry] = [] { didSet { onStateChanged?() } }
+    private(set) var pendingTranscription: PendingMathTranscription? { didSet { onStateChanged?() } }
+    private(set) var nextHintLevel: Int? = 1 { didSet { onStateChanged?() } }
+    private(set) var solutionRevealed = false { didSet { onStateChanged?() } }
     private(set) var isBusy = false
     private(set) var errorMessage: String?
 
@@ -629,6 +642,26 @@ final class TutorSessionStore {
         self.client = client
         self.sessionID = sessionID
         self.minimumResponseDelay = minimumResponseDelay
+    }
+
+    convenience init(client: any TutorClient, snapshot: TutorSessionSnapshot) {
+        self.init(client: client, sessionID: snapshot.sessionID)
+        problem = snapshot.problem
+        attemptSteps = snapshot.attemptSteps
+        entries = snapshot.entries
+        composerDraft = snapshot.composerDraft
+        composerAttachment = snapshot.composerAttachment
+        pendingTranscription = snapshot.pendingTranscription
+        nextHintLevel = snapshot.nextHintLevel
+        solutionRevealed = snapshot.solutionRevealed
+    }
+
+    var snapshot: TutorSessionSnapshot {
+        TutorSessionSnapshot(sessionID: sessionID, problem: problem, attemptSteps: attemptSteps,
+                             entries: entries, composerDraft: composerDraft,
+                             composerAttachment: composerAttachment,
+                             pendingTranscription: pendingTranscription,
+                             nextHintLevel: nextHintLevel, solutionRevealed: solutionRevealed)
     }
 
     @discardableResult
@@ -898,12 +931,13 @@ final class TutorSessionStore {
     }
 }
 
-struct CourseProblem: Identifiable, Equatable, Sendable {
+struct CourseProblem: Identifiable, Equatable, Sendable, Codable {
     let id: UUID
     var prompt: String
     var openedInPractice: Bool
     let sources: [TutorSource]
     var groupID: UUID?
+    var doneAttemptID: UUID? = nil
 
     init(
         id: UUID = UUID(),
@@ -920,7 +954,7 @@ struct CourseProblem: Identifiable, Equatable, Sendable {
     }
 }
 
-struct ProblemGroup: Identifiable, Equatable, Sendable {
+struct ProblemGroup: Identifiable, Equatable, Sendable, Codable {
     let id: UUID
     var title: String
     var sourceTitle: String?
@@ -937,6 +971,29 @@ struct ProblemGroup: Identifiable, Equatable, Sendable {
 final class ProblemSetStore {
     private(set) var items: [CourseProblem] = []
     private(set) var groups: [ProblemGroup] = []
+    @ObservationIgnored private let storageURL: URL?
+
+    init(storageURL: URL? = nil) {
+        self.storageURL = storageURL
+        if let storageURL, let data = try? Data(contentsOf: storageURL),
+           let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+            items = snapshot.items
+            groups = snapshot.groups
+        }
+    }
+
+    private struct Snapshot: Codable {
+        let items: [CourseProblem]
+        let groups: [ProblemGroup]
+    }
+
+    private func persist() {
+        guard let storageURL,
+              let data = try? JSONEncoder().encode(Snapshot(items: items, groups: groups)) else { return }
+        try? FileManager.default.createDirectory(at: storageURL.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? data.write(to: storageURL, options: .atomic)
+    }
 
     @discardableResult
     func add(_ prompt: String, sources: [TutorSource] = [], groupID: UUID? = nil) -> CourseProblem? {
@@ -945,6 +1002,7 @@ final class ProblemSetStore {
         guard groupID == nil || groups.contains(where: { $0.id == groupID }) else { return nil }
         let item = CourseProblem(prompt: trimmed, sources: sources, groupID: groupID)
         items.insert(item, at: 0)
+        persist()
         return item
     }
 
@@ -954,12 +1012,18 @@ final class ProblemSetStore {
     func addGenerated(_ generated: [GeneratedCourseProblem]) -> Int {
         var saved = 0
         for problem in generated.reversed() {
-            guard !problem.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let prompt = problem.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prompt.isEmpty else { continue }
+            let sourceIDs = Set(problem.sources.map(\.sourceID))
+            if items.contains(where: {
+                $0.prompt.localizedCaseInsensitiveCompare(prompt) == .orderedSame
+                    && Set($0.sources.map(\.sourceID)) == sourceIDs
+            }) { continue }
             let titles = Set(problem.sources.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty })
             let folderTitle = titles.count == 1 ? titles.first : (titles.isEmpty ? nil : "Mixed Course Sources")
             let groupID = folderTitle.flatMap(folderID(for:))
-            if add(problem.prompt, sources: problem.sources, groupID: groupID) != nil {
+            if add(prompt, sources: problem.sources, groupID: groupID) != nil {
                 saved += 1
             }
         }
@@ -985,6 +1049,7 @@ final class ProblemSetStore {
 
         let group = ProblemGroup(title: title, sourceTitle: sourceTitle)
         groups.append(group)
+        persist()
         return group.id
     }
 
@@ -1009,6 +1074,7 @@ final class ProblemSetStore {
         guard !trimmed.isEmpty else { return nil }
         let group = ProblemGroup(title: trimmed)
         groups.append(group)
+        persist()
         return group
     }
 
@@ -1017,6 +1083,7 @@ final class ProblemSetStore {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = groups.firstIndex(where: { $0.id == id }) else { return false }
         groups[index].title = trimmed
+        persist()
         return true
     }
 
@@ -1027,6 +1094,7 @@ final class ProblemSetStore {
         for index in items.indices where items[index].groupID == id {
             items[index].groupID = nil
         }
+        persist()
         return true
     }
 
@@ -1035,6 +1103,7 @@ final class ProblemSetStore {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = items.firstIndex(where: { $0.id == id }) else { return false }
         items[index].prompt = trimmed
+        persist()
         return true
     }
 
@@ -1043,6 +1112,7 @@ final class ProblemSetStore {
         guard groupID == nil || groups.contains(where: { $0.id == groupID }),
               let index = items.firstIndex(where: { $0.id == id }) else { return false }
         items[index].groupID = groupID
+        persist()
         return true
     }
 
@@ -1050,11 +1120,19 @@ final class ProblemSetStore {
     func remove(_ id: UUID) -> Bool {
         let previousCount = items.count
         items.removeAll { $0.id == id }
+        persist()
         return items.count != previousCount
     }
 
     func markOpened(_ id: UUID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].openedInPractice = true
+        persist()
+    }
+
+    func markDone(_ id: UUID, attemptID: UUID?, done: Bool) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].doneAttemptID = done ? attemptID : nil
+        persist()
     }
 }

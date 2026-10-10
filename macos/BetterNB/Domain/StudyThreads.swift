@@ -6,10 +6,17 @@ enum StudyThreadKind: Equatable {
     case courseQuestion
 }
 
+struct ProblemAttemptSummary {
+    let id: UUID
+    let solutionRevealed: Bool
+}
+
 struct StudyThreadSummary: Identifiable {
     let id: UUID
     let title: String
     let kind: StudyThreadKind
+    let problemID: UUID?
+    let attemptID: UUID?
 }
 
 private enum StudyThreadContent {
@@ -28,9 +35,12 @@ private struct StudyThread {
     let id: UUID
     let title: String
     let content: StudyThreadContent
+    var problemID: UUID? = nil
+    var attemptID: UUID? = nil
 
     var summary: StudyThreadSummary {
-        StudyThreadSummary(id: id, title: title, kind: content.kind)
+        StudyThreadSummary(id: id, title: title, kind: content.kind,
+                           problemID: problemID, attemptID: attemptID)
     }
 }
 
@@ -39,6 +49,49 @@ private struct StudyThread {
 final class StudyThreadStore {
     private var threads: [StudyThread] = []
     private(set) var activeID: UUID?
+    @ObservationIgnored private let storageURL: URL?
+
+    private struct StoredPracticeThread: Codable {
+        let id: UUID
+        let title: String
+        let problemID: UUID?
+        let attemptID: UUID?
+        let snapshot: TutorSessionSnapshot
+    }
+
+    init(storageURL: URL? = nil, tutorClient: (any TutorClient)? = nil) {
+        self.storageURL = storageURL
+        if let storageURL, let tutorClient,
+           let data = try? Data(contentsOf: storageURL),
+           let stored = try? JSONDecoder().decode([StoredPracticeThread].self, from: data) {
+            threads = stored.map { entry in
+                StudyThread(id: entry.id, title: entry.title,
+                            content: .practice(TutorSessionStore(client: tutorClient, snapshot: entry.snapshot)),
+                            problemID: entry.problemID, attemptID: entry.attemptID)
+            }
+            for thread in threads {
+                if case .practice(let tutor) = thread.content { attachPersistence(to: tutor) }
+            }
+        }
+    }
+
+    private func attachPersistence(to tutor: TutorSessionStore) {
+        tutor.onStateChanged = { [weak self] in self?.persist() }
+    }
+
+    private func persist() {
+        guard let storageURL else { return }
+        let stored = threads.compactMap { thread -> StoredPracticeThread? in
+            guard case .practice(let tutor) = thread.content else { return nil }
+            return StoredPracticeThread(id: thread.id, title: thread.title,
+                                        problemID: thread.problemID, attemptID: thread.attemptID,
+                                        snapshot: tutor.snapshot)
+        }
+        guard let data = try? JSONEncoder().encode(stored) else { return }
+        try? FileManager.default.createDirectory(at: storageURL.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? data.write(to: storageURL, options: .atomic)
+    }
 
     var recent: [StudyThreadSummary] {
         Array(all.prefix(3))
@@ -61,10 +114,35 @@ final class StudyThreadStore {
     }
 
     var activeTitle: String? { activeThread?.title }
+    var activeProblemID: UUID? { activeThread?.problemID }
+    var activeAttemptID: UUID? { activeThread?.attemptID }
+
+    func latestPractice(for problemID: UUID) -> UUID? {
+        threads.reversed().first { $0.problemID == problemID && $0.content.kind == .practice }?.id
+    }
+
+    func latestAttempt(for problemID: UUID) -> ProblemAttemptSummary? {
+        guard let thread = threads.reversed().first(where: { $0.problemID == problemID }),
+              let attemptID = thread.attemptID,
+              case .practice(let tutor) = thread.content else { return nil }
+        return ProblemAttemptSummary(id: attemptID, solutionRevealed: tutor.solutionRevealed)
+    }
+
+    func linkActivePractice(to problemID: UUID) {
+        guard let activeID, let index = threads.firstIndex(where: { $0.id == activeID }),
+              threads[index].content.kind == .practice else { return }
+        threads[index].problemID = problemID
+        persist()
+    }
 
     @discardableResult
-    func startPractice(prompt: String, tutor: TutorSessionStore) -> UUID {
-        insert(title: StudyThreadTitle.forPrompt(prompt, kind: .practice), content: .practice(tutor))
+    func startPractice(prompt: String, tutor: TutorSessionStore, problemID: UUID? = nil) -> UUID {
+        let id = insert(title: StudyThreadTitle.forPrompt(prompt, kind: .practice),
+                        content: .practice(tutor), problemID: problemID,
+                        attemptID: UUID())
+        attachPersistence(to: tutor)
+        persist()
+        return id
     }
 
     @discardableResult
@@ -87,9 +165,11 @@ final class StudyThreadStore {
         threads.first { $0.id == activeID }
     }
 
-    private func insert(title: String, content: StudyThreadContent) -> UUID {
+    private func insert(title: String, content: StudyThreadContent,
+                        problemID: UUID? = nil, attemptID: UUID? = nil) -> UUID {
         let id = UUID()
-        threads.append(StudyThread(id: id, title: title, content: content))
+        threads.append(StudyThread(id: id, title: title, content: content,
+                                   problemID: problemID, attemptID: attemptID))
         activeID = id
         return id
     }
