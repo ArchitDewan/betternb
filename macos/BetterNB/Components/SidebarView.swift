@@ -3,6 +3,12 @@ import SwiftUI
 
 struct SidebarView: View {
     @Binding var selection: WorkspaceDestination
+    let notebooks: [CourseNotebook]
+    let activeNotebookID: String
+    let onOpenNotebook: (String) -> Void
+    let onCreateNotebook: () -> Void
+    let onRequestRenameNotebook: (CourseNotebook) -> Void
+    let onRequestDeleteNotebook: (CourseNotebook) -> Void
     let recentThreads: [StudyThreadSummary]
     let totalThreadCount: Int
     let activeThreadID: UUID?
@@ -10,7 +16,7 @@ struct SidebarView: View {
     let onOpenThread: (UUID) -> Void
     let onShowAllThreads: () -> Void
     @EnvironmentObject private var authentication: AuthenticationSession
-    @State private var calculusExpanded = true
+    @State private var expandedNotebookIDs: Set<String> = []
     private let zoom: CGFloat = 1
 
     var body: some View {
@@ -30,86 +36,55 @@ struct SidebarView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2 * zoom) {
-                        groupLabel("COURSES")
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.17)) { calculusExpanded.toggle() }
-                        } label: {
-                            HStack(spacing: 8 * zoom) {
-                                Image(systemName: "folder")
-                                    .font(.system(size: 16 * zoom, weight: .regular))
+                        HStack {
+                            groupLabel("COURSES")
+                            Spacer()
+                            Button(action: onCreateNotebook) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 12 * zoom, weight: .semibold))
                                     .foregroundStyle(LemmaColors.textSecondary)
-                                    .frame(width: 18 * zoom)
-                                Text("Calculus I")
-                                    .font(.system(size: 13 * zoom))
-                                    .foregroundStyle(LemmaColors.textPrimary)
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9 * zoom, weight: .semibold))
-                                    .foregroundStyle(LemmaColors.textTertiary)
-                                    .rotationEffect(.degrees(calculusExpanded ? 90 : 0))
+                                    .frame(width: 28 * zoom, height: 24 * zoom)
                             }
-                            .padding(.horizontal, 10 * zoom)
-                            .frame(height: 32 * zoom)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Create notebook")
+                            .help("Create notebook")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Calculus I")
-                        .accessibilityValue(calculusExpanded ? "Expanded" : "Collapsed")
-
-                        if calculusExpanded {
-                            VStack(alignment: .leading, spacing: 1 * zoom) {
-                                ForEach(WorkspaceDestination.courseTools) { destination in
-                                    LemmaSidebarRow(
-                                        title: destination.title,
-                                        systemImage: destination.systemImage,
-                                        isSelected: selection == destination && (destination != .study || activeThreadID == nil),
-                                        indentationLevel: 1
-                                    ) {
-                                        if destination == .study {
-                                            onOpenStudyDesk()
-                                        } else {
-                                            selection = destination
+                        ForEach(notebooks) { notebook in
+                            notebookFolder(notebook)
+                            if expandedNotebookIDs.contains(notebook.id) {
+                                VStack(alignment: .leading, spacing: 1 * zoom) {
+                                    ForEach(WorkspaceDestination.courseTools) { destination in
+                                        LemmaSidebarRow(
+                                            title: destination.title,
+                                            systemImage: destination.systemImage,
+                                            isSelected: activeNotebookID == notebook.id && selection == destination
+                                                && (destination != .study || activeThreadID == nil),
+                                            indentationLevel: 1
+                                        ) {
+                                            if activeNotebookID != notebook.id {
+                                                onOpenNotebook(notebook.id)
+                                            }
+                                            if destination == .study { onOpenStudyDesk() }
+                                            else { selection = destination }
                                         }
-                                    }
-                                    if destination == .study && !recentThreads.isEmpty {
-                                        ForEach(recentThreads) { thread in
-                                            LemmaSidebarRow(
-                                                title: thread.title,
-                                                systemImage: "circle.fill",
-                                                isMarker: true,
-                                                isSelected: selection == .study && activeThreadID == thread.id,
-                                                indentationLevel: 2
-                                            ) { onOpenThread(thread.id) }
-                                        }
-                                        if totalThreadCount > recentThreads.count {
-                                            LemmaSidebarRow(
-                                                title: "All threads",
-                                                systemImage: "ellipsis",
-                                                isMarker: true,
-                                                isSelected: false,
-                                                indentationLevel: 2,
-                                                action: onShowAllThreads
-                                            )
+                                        if destination == .study && activeNotebookID == notebook.id && !recentThreads.isEmpty {
+                                            ForEach(recentThreads) { thread in
+                                                LemmaSidebarRow(
+                                                    title: thread.title, systemImage: "circle.fill", isMarker: true,
+                                                    isSelected: selection == .study && activeThreadID == thread.id,
+                                                    indentationLevel: 2
+                                                ) { onOpenThread(thread.id) }
+                                            }
+                                            if totalThreadCount > recentThreads.count {
+                                                LemmaSidebarRow(title: "All threads", systemImage: "ellipsis",
+                                                                isMarker: true, isSelected: false,
+                                                                indentationLevel: 2, action: onShowAllThreads)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-
-                        HStack(spacing: 8 * zoom) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 16 * zoom))
-                                .frame(width: 18 * zoom)
-                            Text("Linear Algebra")
-                                .font(.system(size: 13 * zoom))
-                            Spacer(minLength: 0)
-                            Text("Soon")
-                                .font(.system(size: 11 * zoom))
-                        }
-                        .foregroundStyle(LemmaColors.textTertiary)
-                        .padding(.horizontal, 10 * zoom)
-                        .frame(height: 32 * zoom)
-                        .accessibilityElement(children: .combine)
                     }
 
                     VStack(alignment: .leading, spacing: 1 * zoom) {
@@ -129,6 +104,11 @@ struct SidebarView: View {
                 .padding(.bottom, 8 * zoom)
             }
             .scrollIndicators(.hidden)
+            .onAppear { expandedNotebookIDs.insert(activeNotebookID) }
+            .onChange(of: activeNotebookID) { _, newID in expandedNotebookIDs.insert(newID) }
+            .onChange(of: notebooks.map(\.id)) { _, ids in
+                expandedNotebookIDs.formIntersection(ids)
+            }
 
             accountFooter
         }
@@ -138,10 +118,54 @@ struct SidebarView: View {
         .navigationSplitViewColumnWidth(min: 248, ideal: 288, max: 320)
     }
 
+    private func notebookFolder(_ notebook: CourseNotebook) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.17)) {
+                if activeNotebookID != notebook.id {
+                    expandedNotebookIDs.insert(notebook.id)
+                    onOpenNotebook(notebook.id)
+                } else if expandedNotebookIDs.contains(notebook.id) {
+                    expandedNotebookIDs.remove(notebook.id)
+                } else {
+                    expandedNotebookIDs.insert(notebook.id)
+                }
+            }
+        } label: {
+            HStack(spacing: 8 * zoom) {
+                Image(systemName: "folder")
+                    .font(.system(size: 16 * zoom, weight: .regular))
+                    .foregroundStyle(LemmaColors.textSecondary)
+                    .frame(width: 18 * zoom)
+                Text(notebook.title)
+                    .font(.system(size: 13 * zoom))
+                    .foregroundStyle(LemmaColors.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9 * zoom, weight: .semibold))
+                    .foregroundStyle(LemmaColors.textTertiary)
+                    .rotationEffect(.degrees(expandedNotebookIDs.contains(notebook.id) ? 90 : 0))
+            }
+            .padding(.horizontal, 10 * zoom)
+            .frame(height: 32 * zoom)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(notebook.title)
+        .accessibilityValue(expandedNotebookIDs.contains(notebook.id) ? "Expanded" : "Collapsed")
+        .contextMenu {
+            Button("Rename") { onRequestRenameNotebook(notebook) }
+            Button("Delete notebook", role: .destructive) { onRequestDeleteNotebook(notebook) }
+                .disabled(notebooks.count == 1)
+        }
+    }
+
     private func groupLabel(_ title: String) -> some View {
         Text(title.capitalized)
             .font(.system(size: 11 * zoom, weight: .medium))
             .foregroundStyle(LemmaColors.textTertiary)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.leading, 8 * zoom)
             .padding(.bottom, 2 * zoom)
             .padding(.top, 2 * zoom)

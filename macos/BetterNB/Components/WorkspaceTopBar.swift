@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WorkspaceTopBar: View {
     let destination: WorkspaceDestination
+    let courseTitle: String
     var onSearch: () -> Void = {}
     @Environment(\.workspaceZoom) private var zoom
     @State private var isSearchHovering = false
@@ -12,11 +13,11 @@ struct WorkspaceTopBar: View {
                 .font(.system(size: 13 * zoom, weight: .medium))
                 .foregroundStyle(LemmaColors.textPrimary)
 
-            if destination != .home {
+            if destination != .home && destination != .review {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8 * zoom, weight: .semibold))
                     .foregroundStyle(LemmaColors.textTertiary)
-                Text("Calculus I")
+                Text(courseTitle)
                     .font(.system(size: 12 * zoom))
                     .foregroundStyle(LemmaColors.textTertiary)
             }
