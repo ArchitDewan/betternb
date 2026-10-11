@@ -59,7 +59,8 @@ struct SidebarView: View {
                                             systemImage: destination.systemImage,
                                             isSelected: activeNotebookID == notebook.id && selection == destination
                                                 && (destination != .study || activeThreadID == nil),
-                                            indentationLevel: 1
+                                            indentationLevel: 1,
+                                            isInProgress: destination == .problems
                                         ) {
                                             if activeNotebookID != notebook.id {
                                                 onOpenNotebook(notebook.id)
@@ -296,6 +297,7 @@ struct LemmaSidebarRow: View {
     var isMarker = false
     let isSelected: Bool
     var indentationLevel = 0
+    var isInProgress = false
     let action: () -> Void
     @Environment(\.workspaceZoom) private var zoom
     @State private var isHovering = false
@@ -320,6 +322,7 @@ struct LemmaSidebarRow: View {
                     .foregroundStyle(isSelected ? LemmaColors.textPrimary : LemmaColors.textSecondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if isInProgress { FeatureInProgressBadge() }
             }
             .padding(.leading, CGFloat(10 + 16 * indentationLevel) * zoom)
             .padding(.trailing, 10 * zoom)
@@ -334,7 +337,23 @@ struct LemmaSidebarRow: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityLabel(title)
-        .help(title)
+        .accessibilityLabel(isInProgress ? "\(title), feature in progress" : title)
+        .help(isInProgress ? "\(title) is still being built." : title)
+    }
+}
+
+
+struct FeatureInProgressBadge: View {
+    @Environment(\.workspaceZoom) private var zoom
+
+    var body: some View {
+        Text("In progress")
+            .font(.system(size: 9 * zoom, weight: .medium))
+            .foregroundStyle(LemmaColors.toolQuiz)
+            .padding(.horizontal, 6 * zoom)
+            .padding(.vertical, 3 * zoom)
+            .background(LemmaColors.toolQuiz.opacity(0.12), in: Capsule())
+            .fixedSize()
+            .accessibilityLabel("Feature in progress")
     }
 }

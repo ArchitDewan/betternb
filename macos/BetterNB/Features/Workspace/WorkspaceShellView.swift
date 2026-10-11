@@ -7,7 +7,11 @@ struct WorkspaceShellView: View {
     @State private var workspace: CourseWorkspaceState
     @State private var workspaceCache: [String: CourseWorkspaceState] = [:]
     @State private var isSearchPresented = false
-    @State private var isSourcesPresented = false
+    @State private var isMaterialsPresented = false
+    @State private var reviewNotebookID: String?
+    @State private var reviewTopicID: UUID?
+    @State private var practiceReturnTopicID: UUID?
+    @State private var textbookSourceID: String?
     @State private var isAllThreadsPresented = false
     @State private var notebookToRename: CourseNotebook?
     @State private var notebookToDelete: CourseNotebook?
@@ -32,7 +36,11 @@ struct WorkspaceShellView: View {
         GeometryReader { geometry in
             NavigationSplitView {
                 SidebarView(
-                    selection: $selection,
+                    selection: Binding(get: { selection }, set: { destination in
+                        if destination == .review { reviewNotebookID = nil; reviewTopicID = nil }
+                        practiceReturnTopicID = nil
+                        selection = destination
+                    }),
                     notebooks: catalog.notebooks,
                     activeNotebookID: catalog.activeID,
                     onOpenNotebook: openNotebook,
@@ -63,8 +71,11 @@ struct WorkspaceShellView: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .tint(LemmaColors.accent)
         }
+        .buttonStyle(LemmaButtonStyle())
         .sheet(isPresented: $isSearchPresented) {
             WorkspaceSearchView { destination in
+                if destination == .review { reviewNotebookID = nil; reviewTopicID = nil }
+                practiceReturnTopicID = nil
                 if destination == .study {
                     showStudyDesk()
                 } else {
@@ -73,10 +84,17 @@ struct WorkspaceShellView: View {
                 isSearchPresented = false
             }
         }
-        .sheet(isPresented: $isSourcesPresented) {
-            CourseSourcesView(store: courseSources, courseTitle: courseTitle) { selected in
-                problemSet.addGenerated(selected)
+        .sheet(isPresented: $isMaterialsPresented) {
+            VStack(spacing: 0) {
+                HStack { Spacer(); Button { isMaterialsPresented = false } label: { Image(systemName: "xmark") }.buttonStyle(LemmaButtonStyle(kind: .quiet)).accessibilityLabel("Close course materials") }.padding(.horizontal, 20).padding(.top, 12)
+                NotebookResourcesView(sources: courseSources, review: workspace.review, courseTitle: courseTitle) { id in
+                    textbookSourceID = id
+                    isMaterialsPresented = false
+                    selection = .textbook
+                }
             }
+            .frame(width: 740, height: 440)
+            .background(LemmaColors.surface)
         }
         .sheet(isPresented: $isAllThreadsPresented) {
             AllStudyThreadsView(threads: threads.all) { id in
@@ -118,29 +136,31 @@ struct WorkspaceShellView: View {
                               onCreateNotebook: { isCreateNotebookPresented = true },
                               onRequestRenameNotebook: { notebookToRename = $0 },
                               onRequestDeleteNotebook: { notebookToDelete = $0 })
+        case .review:
+            if reviewNotebookID == workspace.courseID {
+                CourseReviewView(title: courseTitle, store: workspace.review, sources: courseSources,
+                    problems: problemSet,
+                    onBack: { reviewNotebookID = nil; reviewTopicID = nil })
+            } else {
+                ReviewNotebookOverview(notebooks: catalog.notebooks, accountID: accountID) { id in
+                    openNotebook(id)
+                    reviewNotebookID = id
+                    reviewTopicID = nil
+                    selection = .review
+                }
+            }
         case .study:
             studyView
         case .textbook:
             TextbookWorkspaceView(
                 sources: courseSources,
                 scratchpad: textbookScratchpad,
-                onManageSources: { isSourcesPresented = true },
-                onPracticeSelection: { startProblem($0, attachment: nil) }
+                onManageSources: { isMaterialsPresented = true },
+                onPracticeSelection: { startProblem($0, attachment: nil) },
+                initialSourceID: textbookSourceID
             )
         case .problems:
-            ProblemSetView(store: problemSet, sources: courseSources, onWork: { item in
-                if let threadID = threads.latestPractice(for: item.id) {
-                    openThread(threadID)
-                } else {
-                    startSavedProblem(item)
-                }
-            }, onNewAttempt: { item in
-                startSavedProblem(item)
-            }, latestAttempt: { id in
-                threads.latestAttempt(for: id)
-            }, onMarkDone: { item, attemptID, done in
-                problemSet.markDone(item.id, attemptID: attemptID, done: done)
-            })
+            ProblemSetView()
         default:
             WorkspacePlaceholderView(destination: selection)
         }
@@ -156,9 +176,9 @@ struct WorkspaceShellView: View {
                 problemCount: problemSet.items.count,
                 recentThreads: threads.recent,
                 totalThreadCount: threads.all.count,
-                onManageSources: { isSourcesPresented = true },
+                onManageSources: { isMaterialsPresented = true },
                 onOpenProblems: { selection = .problems },
-                onOpenReview: { selection = .review },
+                onOpenReview: { reviewNotebookID = workspace.courseID; reviewTopicID = nil; selection = .review },
                 onOpenFormulaSheet: { selection = .formulaSheet },
                 onOpenThread: openThread,
                 onShowAllThreads: { isAllThreadsPresented = true },
@@ -181,12 +201,17 @@ struct WorkspaceShellView: View {
             }
         case .worksheet:
             if let tutor = threads.activeTutor {
-                PracticeSessionView(tutor: tutor, onBackToStudy: showStudyDesk,
+                PracticeSessionView(tutor: tutor, onBackToStudy: {
+                    if let topicID = practiceReturnTopicID {
+                        reviewNotebookID = workspace.courseID; reviewTopicID = topicID
+                        selection = .review; practiceReturnTopicID = nil
+                    } else { showStudyDesk() }
+                },
                                     onSaveToProblems: threads.activeProblemID == nil ? {
                     guard let prompt = tutor.problem,
                           let saved = problemSet.add(prompt) else { return }
                     threads.linkActivePractice(to: saved.id)
-                } : nil)
+                } : nil, backDestination: practiceReturnTopicID == nil ? "Study desk" : "Review topic")
                 .id(threads.activeID)
             }
         }
@@ -218,6 +243,7 @@ struct WorkspaceShellView: View {
     }
 
     private func startProblem(_ prompt: String, attachment: MessageAttachment?) {
+        practiceReturnTopicID = nil
         let tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
         threads.startPractice(prompt: prompt.isEmpty ? "Image problem" : prompt, tutor: tutor)
         studyRoute = .worksheet
@@ -235,12 +261,15 @@ struct WorkspaceShellView: View {
         let tutor = TutorSessionStore(client: AppDependencies.makeTutorClient())
         threads.startPractice(prompt: item.prompt, tutor: tutor, problemID: item.id)
         problemSet.markOpened(item.id)
+        let topicID = practiceReturnTopicID ?? item.topicID
+        if let topicID { workspace.review.recordPractice(topicID: topicID, problemID: item.id) }
         studyRoute = .worksheet
         selection = .study
         Task { _ = await tutor.beginProblem(item.prompt) }
     }
 
     private func openThread(_ id: UUID) {
+        practiceReturnTopicID = nil
         guard let kind = threads.activate(id) else { return }
         studyRoute = kind == .practice ? .worksheet : .conversation
         selection = .study
@@ -253,13 +282,14 @@ struct WorkspaceShellView: View {
     }
 
     private func openNotebook(_ id: String) {
+        practiceReturnTopicID = nil
+        textbookSourceID = nil
         guard catalog.notebooks.contains(where: { $0.id == id }) else { return }
         if id != workspace.courseID {
             workspaceCache[workspace.courseID] = workspace
             workspace = workspaceCache.removeValue(forKey: id) ?? CourseWorkspaceState(accountID: accountID, courseID: id)
         }
         _ = catalog.select(id)
-        isSourcesPresented = false
         isAllThreadsPresented = false
         studyRoute = .desk
         selection = .study
@@ -274,7 +304,6 @@ struct WorkspaceShellView: View {
                 ?? CourseWorkspaceState(accountID: accountID, courseID: catalog.activeID)
             studyRoute = .desk
             selection = .study
-            isSourcesPresented = false
             isAllThreadsPresented = false
         }
     }
@@ -287,9 +316,11 @@ private final class CourseWorkspaceState {
     let courseSources: CourseSourceStore
     let textbookScratchpad = TextbookScratchpadStore()
     let problemSet: ProblemSetStore
+    let review: CourseReviewStore
 
     init(accountID: String, courseID: String) {
         self.courseID = courseID
+        review = CourseReviewStore(storageURL: NotebookStorage.reviewURL(for: accountID, notebookID: courseID))
         threads = StudyThreadStore(
             storageURL: NotebookStorage.attemptsURL(for: accountID, notebookID: courseID),
             tutorClient: AppDependencies.makeTutorClient()

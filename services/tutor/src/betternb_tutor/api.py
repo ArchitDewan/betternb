@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .contracts import (
+    GenerateRoadmapRequest, GeneratedRoadmapResponse,
     CourseAnswerResponse,
     CourseQuestionRequest,
     CourseSourceResponse,
@@ -76,6 +77,17 @@ def create_app(
         return TranscriptionResponse(transcription=transcription)
 
     if course_study is not None:
+        @app.post("/v1/courses/{course_id}/roadmaps", response_model=GeneratedRoadmapResponse)
+        def generate_roadmap(course_id: str, request: GenerateRoadmapRequest):
+            try:
+                return course_study.generate_roadmap(course_id, request.source_ids, request.primary_source_id)
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            except LookupError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=502, detail="The roadmap could not be generated. Your saved roadmap is unchanged.") from error
+
         @app.get("/v1/courses/{course_id}/sources", response_model=list[CourseSourceResponse])
         def list_course_sources(course_id: str) -> list[CourseSourceResponse]:
             return [CourseSourceResponse(**source.__dict__) for source in course_study.sources.list_sources(course_id)]
@@ -166,7 +178,8 @@ def create_app(
             request: GenerateProblemsRequest,
         ) -> GeneratedProblemsResponse:
             try:
-                problems = course_study.generate_problems(course_id, request.count, request.source_id)
+                problems = course_study.generate_problems(course_id, request.count, request.source_id,
+                    **({"topic": request.topic, "source_ids": request.source_ids} if request.topic is not None else {}))
             except LookupError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
             except Exception as error:
@@ -198,7 +211,8 @@ def create_app(
             course_id: str, request: GenerateFlashcardsRequest,
         ) -> GeneratedFlashcardsResponse:
             try:
-                cards = course_study.generate_flashcards(course_id, request.count, request.source_id)
+                cards = course_study.generate_flashcards(course_id, request.count, request.source_id,
+                    **({"topic": request.topic, "source_ids": request.source_ids} if request.topic is not None else {}))
             except LookupError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
             except Exception as error:

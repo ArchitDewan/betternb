@@ -938,6 +938,7 @@ struct CourseProblem: Identifiable, Equatable, Sendable, Codable {
     let sources: [TutorSource]
     var groupID: UUID?
     var doneAttemptID: UUID? = nil
+    var topicID: UUID? = nil
 
     init(
         id: UUID = UUID(),
@@ -1028,6 +1029,17 @@ final class ProblemSetStore {
             }
         }
         return saved
+    }
+
+    func linkTopic(_ id: UUID, topicID: UUID?) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].topicID = topicID
+        persist()
+    }
+
+    func detachTopics(except ids: Set<UUID>) {
+        for i in items.indices where items[i].topicID.map({ !ids.contains($0) }) == true { items[i].topicID = nil }
+        persist()
     }
 
     private func folderID(for sourceTitle: String) -> UUID? {

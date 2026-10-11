@@ -47,6 +47,7 @@ struct TextbookWorkspaceView: View {
     @Bindable var scratchpad: TextbookScratchpadStore
     let onManageSources: () -> Void
     let onPracticeSelection: (String) -> Void
+    var initialSourceID: String? = nil
 
     @State private var selectedSourceID: String?
     @State private var document: PDFDocument?
@@ -78,9 +79,10 @@ struct TextbookWorkspaceView: View {
             }
         }
         .background(Color.clear)
-        .task {
+        .task(id: initialSourceID) {
             await sources.refresh()
-            if selectedSource == nil, let first = pdfSources.first { await open(first.id) }
+            if let initialSourceID, pdfSources.contains(where: { $0.id == initialSourceID }) { await open(initialSourceID) }
+            else if selectedSource == nil, let first = pdfSources.first { await open(first.id) }
         }
         .onChange(of: sources.sources) { _, updated in
             if selectedSource == nil, let first = updated.first(where: { $0.mediaType == "application/pdf" }) {
@@ -100,7 +102,7 @@ struct TextbookWorkspaceView: View {
             }
             Spacer()
             Button(action: onManageSources) {
-                Label("Sources", systemImage: "books.vertical")
+                Label("Course materials", systemImage: "books.vertical")
             }
             .buttonStyle(.bordered)
         }
@@ -560,7 +562,7 @@ struct TextbookWorkspaceView: View {
             HStack(spacing: 6) {
                 Image(systemName: "books.vertical")
                     .foregroundStyle(LemmaColors.toolChat)
-                Text("All course sources")
+                Text("Manage materials")
                     .foregroundStyle(LemmaColors.textSecondary)
                 Spacer()
                 Text("Ask Lemma")

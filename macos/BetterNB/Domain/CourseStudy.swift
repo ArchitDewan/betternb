@@ -109,6 +109,9 @@ final class GeneratedProblemReviewStore {
 }
 
 protocol CourseStudyClient: Sendable {
+    func generateRoadmap(courseID: String, sourceIDs: [String], primarySourceID: String) async throws -> GeneratedRoadmap
+    func generateTopicProblems(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedCourseProblem]
+    func generateTopicFlashcards(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedTextbookFlashcard]
     func listSources(courseID: String) async throws -> [CourseSourceRecord]
     func readPDF(sourceID: String, courseID: String) async throws -> Data
     func importPDF(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord
@@ -125,6 +128,15 @@ protocol CourseStudyClient: Sendable {
 }
 
 extension CourseStudyClient {
+    func generateRoadmap(courseID: String, sourceIDs: [String], primarySourceID: String) async throws -> GeneratedRoadmap {
+        throw TutorServiceError.rejected("Roadmap generation is unavailable.")
+    }
+    func generateTopicProblems(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedCourseProblem] {
+        throw TutorServiceError.rejected("Topic generation is unavailable.")
+    }
+    func generateTopicFlashcards(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedTextbookFlashcard] {
+        throw TutorServiceError.rejected("Topic generation is unavailable.")
+    }
     func importWorksheet(_ attachment: MessageAttachment, courseID: String) async throws -> CourseSourceRecord {
         throw TutorServiceError.rejected("Worksheet upload is unavailable from this client.")
     }
@@ -194,7 +206,11 @@ final class CourseSourceStore {
 
     @discardableResult
     func importPDF(_ attachment: MessageAttachment) async -> Bool {
-        guard attachment.mediaType == "application/pdf", !isImporting else { return false }
+        await importPDFRecord(attachment) != nil
+    }
+
+    func importPDFRecord(_ attachment: MessageAttachment) async -> CourseSourceRecord? {
+        guard attachment.mediaType == "application/pdf", !isImporting else { return nil }
         isImporting = true
         defer { isImporting = false }
         do {
@@ -203,10 +219,10 @@ final class CourseSourceStore {
             sources.append(imported)
             sources.sort { $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending }
             errorMessage = nil
-            return true
+            return imported
         } catch {
             errorMessage = message(for: error, fallback: "That PDF couldn’t be indexed.")
-            return false
+            return nil
         }
     }
 

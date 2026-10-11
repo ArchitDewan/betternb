@@ -5,7 +5,6 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
     case review
     case study
     case textbook
-    case library
     case problems
     case flashcards
     case formulaSheet
@@ -19,7 +18,6 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
         case .review: "Review"
         case .study: "Study"
         case .textbook: "Textbook"
-        case .library: "Library"
         case .problems: "Problems"
         case .flashcards: "Flashcards"
         case .formulaSheet: "Formula Sheet"
@@ -33,7 +31,6 @@ enum WorkspaceDestination: String, CaseIterable, Identifiable, Sendable {
         case .review: "clock"
         case .study: "bubble.left"
         case .textbook: "book.closed"
-        case .library: "books.vertical"
         case .problems: "list.bullet"
         case .flashcards: "square.on.square"
         case .formulaSheet: "sum"
@@ -150,7 +147,7 @@ struct StudyTool: Identifiable, Equatable {
     let destination: WorkspaceDestination
 
     static let calculusTools: [StudyTool] = [
-        StudyTool(id: "notes", title: "Lecture notes", detail: "Section 2.3", destination: .library),
+        StudyTool(id: "notes", title: "Lecture notes", detail: "Section 2.3", destination: .textbook),
         StudyTool(id: "problems", title: "Problem set 3", detail: "6 of 12", destination: .problems),
         StudyTool(id: "flashcards", title: "Core definitions", detail: "3 due", destination: .flashcards),
         StudyTool(id: "practice", title: "Quick check", detail: "8 min", destination: .study),
@@ -168,7 +165,7 @@ struct RecentStudyItem: Identifiable, Equatable {
             id: "limit-laws",
             title: "Limit laws and direct substitution",
             context: "Notes",
-            destination: .library
+            destination: .textbook
         ),
         RecentStudyItem(
             id: "one-sided-limits",

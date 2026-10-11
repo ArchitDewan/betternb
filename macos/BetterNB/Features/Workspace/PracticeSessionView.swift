@@ -5,6 +5,7 @@ struct PracticeSessionView: View {
     let tutor: TutorSessionStore
     var onBackToStudy: () -> Void = {}
     var onSaveToProblems: (() -> Void)? = nil
+    var backDestination = "Study desk"
     @Environment(\.workspaceZoom) private var zoom
     @State private var composerBlurRequest = UUID()
 
@@ -275,8 +276,8 @@ struct PracticeSessionView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Back to Study desk")
-        .help("Back to Study desk")
+        .accessibilityLabel("Back to \(backDestination)")
+        .help("Back to \(backDestination)")
     }
 
     private var composer: some View {

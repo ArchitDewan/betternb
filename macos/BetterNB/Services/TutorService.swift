@@ -38,6 +38,26 @@ final class URLSessionTutorClient: TutorClient, CourseStudyClient, @unchecked Se
         self.session = session
     }
 
+    func generateRoadmap(courseID: String, sourceIDs: [String], primarySourceID: String) async throws -> GeneratedRoadmap {
+        try await reviewRequest(courseID, path: "roadmaps", body: ["source_ids": sourceIDs, "primary_source_id": primarySourceID])
+    }
+    func generateTopicProblems(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedCourseProblem] {
+        let result: GeneratedProblemsEnvelope = try await reviewRequest(courseID, path: "problems", body: ["source_ids": sourceIDs, "topic": topic, "count": count])
+        return result.problems
+    }
+    func generateTopicFlashcards(courseID: String, sourceIDs: [String], topic: String, count: Int) async throws -> [GeneratedTextbookFlashcard] {
+        let result: GeneratedFlashcardsEnvelope = try await reviewRequest(courseID, path: "flashcards", body: ["source_ids": sourceIDs, "topic": topic, "count": count])
+        return result.cards
+    }
+    private func reviewRequest<T: Decodable>(_ courseID: String, path: String, body: [String: Any]) async throws -> T {
+        var request = URLRequest(url: courseURL(courseID, path: path))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try decoder.decode(T.self, from: await responseData(for: request))
+    }
+
     func transcribe(_ attachment: MessageAttachment) async throws -> String {
         let boundary = "Lemma-\(UUID().uuidString)"
         var request = URLRequest(url: baseURL.appending(path: "v1/math/transcriptions"))

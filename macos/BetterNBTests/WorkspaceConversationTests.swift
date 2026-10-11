@@ -35,7 +35,7 @@ struct WorkspaceConversationTests {
         let repository = InMemoryChannelMessageRepository(messagesByChannel: [:])
 
         await #expect(throws: ChannelMessageError.unsupportedDestination) {
-            try await repository.send(text: "Explain this definition", in: .library)
+            try await repository.send(text: "Explain this definition", in: .textbook)
         }
         await #expect(throws: ChannelMessageError.unsupportedDestination) {
             try await repository.messages(in: .problems)
@@ -50,11 +50,11 @@ struct WorkspaceConversationTests {
         await conversations.load(.study)
         #expect(await conversations.send("Keep this message", in: .study))
 
-        await conversations.load(.library)
+        await conversations.load(.textbook)
         await conversations.load(.study)
 
         #expect(conversations.messages(in: .study).map(\.text) == ["Keep this message"])
-        #expect(conversations.messages(in: .library).isEmpty)
+        #expect(conversations.messages(in: .textbook).isEmpty)
     }
 
     @Test

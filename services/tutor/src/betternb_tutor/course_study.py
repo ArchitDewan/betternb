@@ -70,7 +70,7 @@ class CourseStudyModel(Protocol):
         self, question: str, context: list[KnowledgeChunk], image: tuple[bytes, str] | None = None
     ) -> str: ...
 
-    def generate_course_problems(self, context: list[KnowledgeChunk], count: int) -> list[str]: ...
+    def generate_course_problems(self, context: list[KnowledgeChunk], count: int, topic: str | None = None) -> list[str]: ...
 
     def transcribe_worksheet_page(self, data: bytes, media_type: str) -> str: ...
 
@@ -80,7 +80,9 @@ class CourseStudyModel(Protocol):
         self, context: list[KnowledgeChunk], count: int, difficulty: str
     ) -> list[QuizQuestion]: ...
 
-    def generate_course_flashcards(self, context: list[KnowledgeChunk], count: int) -> list[dict[str, str]]: ...
+    def generate_course_flashcards(self, context: list[KnowledgeChunk], count: int, topic: str | None = None) -> list[dict[str, str]]: ...
+
+    def generate_course_roadmap(self, context: list[KnowledgeChunk], primary_source_id: str) -> dict: ...
 
     def summarize_course_source(self, context: list[KnowledgeChunk]) -> dict: ...
 
@@ -237,6 +239,61 @@ class CourseStudyService:
         self.sources = sources
         self._model = model
 
+    def generate_roadmap(self, course_id: str, source_ids: list[str], primary_source_id: str) -> dict:
+        if primary_source_id not in source_ids:
+            raise ValueError("Choose the primary source from the selected resources.")
+        context = []
+        unique_ids = sorted(set(source_ids), key=lambda value: (value != primary_source_id, value))
+        for source_id in unique_ids:
+            source = self.sources.source(course_id, source_id)
+            if source is None:
+                raise LookupError("A selected resource is not available in this notebook.")
+            pages = self.sources.pages_for_source(course_id, source_id)
+            for page, text in pages:
+                if text.strip():
+                    # Preserve a structural excerpt from every page, including late chapters.
+                    budget = 2400 if len(pages) <= 30 else (1800 if page <= 8 else 500)
+                    # Bound the combined input when a course has many lecture files.
+                    budget = min(budget, 400_000 // len(unique_ids) // len(pages))
+                    context.append(KnowledgeChunk(source_id=f"{source_id}.p{page}",
+                        title=source.filename, section=f"Page {page}", topic=course_id,
+                        content=text[:budget]))
+        if not context:
+            raise LookupError("The selected resources have no readable content.")
+        draft = self._model.generate_course_roadmap(context, primary_source_id)
+        references = {c.source_id: c for c in context}
+        units = draft.get("units") if isinstance(draft, dict) else None
+        if not isinstance(units, list) or not 1 <= len(units) <= 40:
+            raise RuntimeError("The model returned an invalid roadmap.")
+        result = []
+        for unit in units:
+            if not isinstance(unit, dict) or not isinstance(unit.get("title"), str) or not unit["title"].strip():
+                raise RuntimeError("The model returned an invalid unit.")
+            topics = unit.get("topics")
+            if not isinstance(topics, list) or not 1 <= len(topics) <= 40:
+                raise RuntimeError("The model returned an empty or oversized unit.")
+            validated = []
+            for topic in topics:
+                if not isinstance(topic, dict) or any(not isinstance(topic.get(k), str) or not topic[k].strip() for k in ("title", "description")):
+                    raise RuntimeError("The model returned an invalid topic.")
+                ids = topic.get("source_ids")
+                if not isinstance(ids, list) or not ids or any(not isinstance(i, str) or i not in references for i in ids):
+                    raise RuntimeError("The model returned an invalid roadmap citation.")
+                validated.append(dict(title=topic["title"].strip(), description=topic["description"].strip(),
+                    sources=[ref.model_dump() for ref in _references([references[i] for i in ids])]))
+            result.append(dict(title=unit["title"].strip(), topics=validated))
+        return {"units": result}
+
+    def topic_context(self, course_id: str, topic: str, source_ids: list[str] | None) -> list[KnowledgeChunk]:
+        if not source_ids or any(self.sources.source(course_id, sid) is None for sid in source_ids):
+            raise LookupError("Choose readable resources from this notebook for the topic.")
+        # Search all course chunks, then filter before limiting so unrelated files cannot crowd out matches.
+        results = self.sources.search(course_id, topic, limit=100000)
+        context = [r.chunk for r in results if any(r.chunk.source_id.startswith(sid + ".") for sid in source_ids)][:12]
+        if not context:
+            raise LookupError("No readable material was found for this topic in the selected resources.")
+        return context
+
     def answer(self, course_id: str, question: str, image: tuple[bytes, str] | None = None) -> GroundedAnswer:
         results = self.sources.search(course_id, question, limit=5)
         context = [result.chunk for result in results]
@@ -295,12 +352,15 @@ class CourseStudyService:
                     )]))
         return result
 
-    def generate_problems(self, course_id: str, count: int = 3, source_id: str | None = None) -> list[GeneratedCourseProblem]:
+    def generate_problems(self, course_id: str, count: int = 3, source_id: str | None = None, *, topic: str | None = None, source_ids: list[str] | None = None) -> list[GeneratedCourseProblem]:
         context = (self.sources.chunks_for_source(course_id, source_id, limit=12)
                    if source_id else self.sources.all_chunks(course_id))
         if not context:
             raise LookupError("Add a readable course source before generating problems.")
-        prompts = self._model.generate_course_problems(context, count)
+        if topic is not None:
+            context = self.topic_context(course_id, topic, source_ids)
+        prompts = (self._model.generate_course_problems(context, count, topic=topic) if topic is not None
+                   else self._model.generate_course_problems(context, count))
         if len(prompts) != count:
             raise RuntimeError("The model returned the wrong number of problems.")
         sources = _references(context)
@@ -327,13 +387,16 @@ class CourseStudyService:
         return questions, _references(context)
 
     def generate_flashcards(
-        self, course_id: str, count: int = 5, source_id: str | None = None
+        self, course_id: str, count: int = 5, source_id: str | None = None, *, topic: str | None = None, source_ids: list[str] | None = None
     ) -> list[GeneratedCourseFlashcard]:
         context = (self.sources.chunks_for_source(course_id, source_id)
                    if source_id else self.sources.sample_chunks(course_id))
         if not context:
             raise LookupError("Add a readable course source or choose an available source before generating flashcards.")
-        drafts = self._model.generate_course_flashcards(context, count)
+        if topic is not None:
+            context = self.topic_context(course_id, topic, source_ids)
+        drafts = (self._model.generate_course_flashcards(context, count, topic=topic) if topic is not None
+                  else self._model.generate_course_flashcards(context, count))
         if len(drafts) != count:
             raise RuntimeError("The model returned the wrong number of flashcards.")
         chunks_by_id = {chunk.source_id: chunk for chunk in context}

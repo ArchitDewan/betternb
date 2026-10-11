@@ -49,15 +49,19 @@ Course sources             Problems                 Study                    Rev
                                                      (generated from misses)
 ```
 
+### Course materials (current implementation)
+
+Each notebook owns a searchable course-materials library, opened as a sheet from Study, Textbook, or Problems, with editable Outline, Textbook, Notes, Worksheet, and Other categories. Uploads happen here. Textbook reads existing PDFs; Problems imports or generates questions from existing resources. Text PDFs retain the 500-page/25 MiB service limit. Scanned worksheets use the separate OCR path (30 PDF pages); image and worksheet formats retain their existing limits. Multiple worksheet images can be combined on import.
+
 ### Course sources
 
 Student opens Sources from the Study desk and adds a lecture PDF. Lemma extracts text with page provenance, builds a semantic index, and can generate cited questions or Problems from that context. Sources are course context, not another destination the student must understand before beginning.
 
-Course sources can index text PDFs. Problems also accepts scanned worksheets and photos for question import and generation. Source-page viewing, selection regions, deletion, and student-authored notes remain later milestones.
+Course materials index text PDFs and accepts scanned worksheets/photos. Resource previews and roadmap references open source pages. Source deletion, selection regions, and student-authored notes remain later milestones.
 
 ### Problems
 
-The homework set. Upload a PDF or one or more worksheet photos, then choose **Import questions** to keep its questions or **Generate new problems** for fresh questions using similar methods. Review, edit, and select the drafts before saving. Students can also add a problem manually. Each card shows its prompt, source page, attempt status, and a link to Practice. Work and manual Done status survive relaunch on this Mac.
+Problems currently shows only an **In progress** placeholder while the feature is redesigned. Its import, generation, folders, and problem-list controls are hidden. Existing stored problems and practice attempts remain intact.
 
 Problems is not a second chatbot.
 
@@ -76,7 +80,7 @@ Practice now uses this worksheet: a problem block, numbered step rows, Check ste
 
 ## Visual north star
 
-The landing mock is the feel for the **Study worksheet**. The sidebar stays product navigation rather than a unit tree, but it is intentionally slim: Home and Review globally; Study and Problems for the course; generated Study Tools collapsed by default. Course Sources are opened from the Study desk.
+The landing mock is the feel for the **Study worksheet**. The sidebar stays product navigation rather than a unit tree, but it is intentionally slim: Home and Review globally; Study and Problems for the course; generated Study Tools collapsed by default. Course materials open in a sheet; the notebook sidebar remains Study, Textbook, and Problems.
 
 Keep the existing course-tool sidebar. Change the *center* of Practice from chat bubbles into a worksheet:
 
@@ -98,7 +102,13 @@ When a later feature touches the Study worksheet, match this interaction model. 
 
 Generated or curated from the course and from misses. They are study tools, not the place you first meet a homework problem.
 
-### Review
+### Review — upload and generate (current implementation)
+
+Review opens a course list. Each course has two actions: **Upload materials** and **Generate review**. Upload accepts multiple PDFs, with a course outline and lecture slides recommended. Generation uses the course's uploaded materials (up to 20); an outline or syllabus is automatically preferred for ordering. There are no source-selection dialogs, category controls, manual roadmap editor, status controls, or practice/flashcard tools in Review.
+
+The generated units and topic descriptions appear inline and save automatically in account/notebook-scoped `review-v1.json`. Regenerating replaces the review only after successful generation and saving; failures preserve the previous review. Existing saved card/activity data remain on disk for compatibility. Adaptive scheduling and additional study tools are deferred.
+
+### Review — future adaptive scheduling
 
 Due items come from `MasteryEvent`s: failed transfer, hint-3 dependency, revealed-then-retry. Reading an explanation never marks mastery.
 

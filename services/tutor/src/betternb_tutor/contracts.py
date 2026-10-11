@@ -103,6 +103,17 @@ class GenerateProblemsRequest(BaseModel):
     count: int = Field(default=3, ge=1, le=8)
     source_id: str | None = None
 
+    topic: str | None = Field(default=None, min_length=1, max_length=2000)
+    source_ids: list[str] | None = Field(default=None, min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def validate_topic_scope(self):
+        if (self.topic is None) != (self.source_ids is None):
+            raise ValueError("Topic generation requires both topic and source_ids.")
+        if self.topic is not None and (not self.topic.strip() or self.source_id is not None):
+            raise ValueError("Choose a nonempty topic and source_ids without source_id.")
+        return self
+
 
 class GeneratedProblemResponse(BaseModel):
     prompt: str
@@ -139,6 +150,17 @@ class GenerateFlashcardsRequest(BaseModel):
     count: int = Field(default=5, ge=1, le=15)
     source_id: str | None = Field(default=None, min_length=1, max_length=128)
 
+    topic: str | None = Field(default=None, min_length=1, max_length=2000)
+    source_ids: list[str] | None = Field(default=None, min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def validate_topic_scope(self):
+        if (self.topic is None) != (self.source_ids is None):
+            raise ValueError("Topic generation requires both topic and source_ids.")
+        if self.topic is not None and (not self.topic.strip() or self.source_id is not None):
+            raise ValueError("Choose a nonempty topic and source_ids without source_id.")
+        return self
+
 
 class GeneratedFlashcardResponse(BaseModel):
     front: str
@@ -165,3 +187,24 @@ class SummaryIdeaResponse(BaseModel):
 class GeneratedSummaryResponse(BaseModel):
     overview: str
     ideas: list[SummaryIdeaResponse]
+
+
+class GenerateRoadmapRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_ids: list[str] = Field(min_length=1, max_length=20)
+    primary_source_id: str = Field(min_length=1, max_length=128)
+
+
+class RoadmapTopicResponse(BaseModel):
+    title: str
+    description: str
+    sources: list[SourceReference]
+
+
+class RoadmapUnitResponse(BaseModel):
+    title: str
+    topics: list[RoadmapTopicResponse]
+
+
+class GeneratedRoadmapResponse(BaseModel):
+    units: list[RoadmapUnitResponse]
